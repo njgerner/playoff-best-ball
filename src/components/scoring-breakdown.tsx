@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
 interface StatLine {
   label: string;
-  value: number | string;
-  calculation: string;
+  value: string; // Formatted value with units (e.g., "361 yds", "2 TDs")
   points: number;
   // Extended calculation details for tooltip
   rawValue: number;
@@ -154,8 +153,8 @@ function CalculationTooltip({ line, children }: { line: StatLine; children: Reac
             {/* Formula summary */}
             <div className="bg-[rgba(255,255,255,0.05)] rounded p-2 text-xs text-center text-[var(--chalk-muted)]">
               {line.operation === "divide"
-                ? `${line.rawValue} yards ÷ ${line.multiplier} yards/point = ${line.points.toFixed(1)} points`
-                : `${line.rawValue} ${line.label.toLowerCase()} × ${line.multiplier} points each = ${line.points.toFixed(1)} points`}
+                ? `${line.rawValue} ÷ ${line.multiplier} = ${line.points.toFixed(1)} pts`
+                : `${line.rawValue} × ${line.multiplier} = ${line.points.toFixed(1)} pts`}
             </div>
           </div>
 
@@ -175,8 +174,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.passYards / RULES.passYardsPerPoint;
     statLines.push({
       label: "Passing Yards",
-      value: stats.passYards,
-      calculation: `${stats.passYards} ÷ ${RULES.passYardsPerPoint}`,
+      value: `${stats.passYards} yds`,
       points: pts,
       rawValue: stats.passYards,
       multiplier: RULES.passYardsPerPoint,
@@ -188,8 +186,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.passTd * RULES.passTd;
     statLines.push({
       label: "Passing TDs",
-      value: stats.passTd,
-      calculation: `${stats.passTd} × ${RULES.passTd}`,
+      value: stats.passTd === 1 ? "1 TD" : `${stats.passTd} TDs`,
       points: pts,
       rawValue: stats.passTd,
       multiplier: RULES.passTd,
@@ -200,9 +197,8 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
   if (stats.passInt && stats.passInt > 0) {
     const pts = stats.passInt * RULES.passInt;
     statLines.push({
-      label: "Interceptions",
-      value: stats.passInt,
-      calculation: `${stats.passInt} × ${RULES.passInt}`,
+      label: "Interceptions Thrown",
+      value: stats.passInt === 1 ? "1 INT" : `${stats.passInt} INTs`,
       points: pts,
       rawValue: stats.passInt,
       multiplier: RULES.passInt,
@@ -216,8 +212,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.rushYards / RULES.rushYardsPerPoint;
     statLines.push({
       label: "Rushing Yards",
-      value: stats.rushYards,
-      calculation: `${stats.rushYards} ÷ ${RULES.rushYardsPerPoint}`,
+      value: `${stats.rushYards} yds`,
       points: pts,
       rawValue: stats.rushYards,
       multiplier: RULES.rushYardsPerPoint,
@@ -229,8 +224,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.rushTd * RULES.rushTd;
     statLines.push({
       label: "Rushing TDs",
-      value: stats.rushTd,
-      calculation: `${stats.rushTd} × ${RULES.rushTd}`,
+      value: stats.rushTd === 1 ? "1 TD" : `${stats.rushTd} TDs`,
       points: pts,
       rawValue: stats.rushTd,
       multiplier: RULES.rushTd,
@@ -244,8 +238,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.receptions * RULES.ppr;
     statLines.push({
       label: "Receptions",
-      value: stats.receptions,
-      calculation: `${stats.receptions} × ${RULES.ppr}`,
+      value: stats.receptions === 1 ? "1 rec" : `${stats.receptions} rec`,
       points: pts,
       rawValue: stats.receptions,
       multiplier: RULES.ppr,
@@ -257,8 +250,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.recYards / RULES.recYardsPerPoint;
     statLines.push({
       label: "Receiving Yards",
-      value: stats.recYards,
-      calculation: `${stats.recYards} ÷ ${RULES.recYardsPerPoint}`,
+      value: `${stats.recYards} yds`,
       points: pts,
       rawValue: stats.recYards,
       multiplier: RULES.recYardsPerPoint,
@@ -270,8 +262,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.recTd * RULES.recTd;
     statLines.push({
       label: "Receiving TDs",
-      value: stats.recTd,
-      calculation: `${stats.recTd} × ${RULES.recTd}`,
+      value: stats.recTd === 1 ? "1 TD" : `${stats.recTd} TDs`,
       points: pts,
       rawValue: stats.recTd,
       multiplier: RULES.recTd,
@@ -284,8 +275,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
   if (stats.fgPoints && stats.fgPoints !== 0) {
     statLines.push({
       label: "Field Goals",
-      value: "-",
-      calculation: "Distance-based scoring",
+      value: "varies",
       points: stats.fgPoints,
       rawValue: stats.fgPoints,
       multiplier: 1,
@@ -297,8 +287,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.xpMade * RULES.xpMade;
     statLines.push({
       label: "Extra Points Made",
-      value: stats.xpMade,
-      calculation: `${stats.xpMade} × ${RULES.xpMade}`,
+      value: stats.xpMade === 1 ? "1 XP" : `${stats.xpMade} XPs`,
       points: pts,
       rawValue: stats.xpMade,
       multiplier: RULES.xpMade,
@@ -310,8 +299,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.xpMissed * RULES.xpMiss;
     statLines.push({
       label: "Extra Points Missed",
-      value: stats.xpMissed,
-      calculation: `${stats.xpMissed} × ${RULES.xpMiss}`,
+      value: stats.xpMissed === 1 ? "1 miss" : `${stats.xpMissed} misses`,
       points: pts,
       rawValue: stats.xpMissed,
       multiplier: RULES.xpMiss,
@@ -325,8 +313,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.twoPtConv * RULES.twoPtConv;
     statLines.push({
       label: "2-Point Conversions",
-      value: stats.twoPtConv,
-      calculation: `${stats.twoPtConv} × ${RULES.twoPtConv}`,
+      value: stats.twoPtConv === 1 ? "1 conv" : `${stats.twoPtConv} conv`,
       points: pts,
       rawValue: stats.twoPtConv,
       multiplier: RULES.twoPtConv,
@@ -338,8 +325,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.fumblesLost * RULES.fumbleLost;
     statLines.push({
       label: "Fumbles Lost",
-      value: stats.fumblesLost,
-      calculation: `${stats.fumblesLost} × ${RULES.fumbleLost}`,
+      value: stats.fumblesLost === 1 ? "1 fumble" : `${stats.fumblesLost} fumbles`,
       points: pts,
       rawValue: stats.fumblesLost,
       multiplier: RULES.fumbleLost,
@@ -353,8 +339,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.sacks * RULES.sack;
     statLines.push({
       label: "Sacks",
-      value: stats.sacks,
-      calculation: `${stats.sacks} × ${RULES.sack}`,
+      value: stats.sacks === 1 ? "1 sack" : `${stats.sacks} sacks`,
       points: pts,
       rawValue: stats.sacks,
       multiplier: RULES.sack,
@@ -365,9 +350,8 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
   if (stats.interceptions && stats.interceptions > 0) {
     const pts = stats.interceptions * RULES.defInt;
     statLines.push({
-      label: "Interceptions (DEF)",
-      value: stats.interceptions,
-      calculation: `${stats.interceptions} × ${RULES.defInt}`,
+      label: "Interceptions",
+      value: stats.interceptions === 1 ? "1 INT" : `${stats.interceptions} INTs`,
       points: pts,
       rawValue: stats.interceptions,
       multiplier: RULES.defInt,
@@ -379,8 +363,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.fumblesRecovered * RULES.fumRec;
     statLines.push({
       label: "Fumbles Recovered",
-      value: stats.fumblesRecovered,
-      calculation: `${stats.fumblesRecovered} × ${RULES.fumRec}`,
+      value: stats.fumblesRecovered === 1 ? "1 rec" : `${stats.fumblesRecovered} rec`,
       points: pts,
       rawValue: stats.fumblesRecovered,
       multiplier: RULES.fumRec,
@@ -392,8 +375,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.defensiveTd * RULES.dstTd;
     statLines.push({
       label: "Defensive TDs",
-      value: stats.defensiveTd,
-      calculation: `${stats.defensiveTd} × ${RULES.dstTd}`,
+      value: stats.defensiveTd === 1 ? "1 TD" : `${stats.defensiveTd} TDs`,
       points: pts,
       rawValue: stats.defensiveTd,
       multiplier: RULES.dstTd,
@@ -405,8 +387,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
     const pts = stats.safeties * RULES.safety;
     statLines.push({
       label: "Safeties",
-      value: stats.safeties,
-      calculation: `${stats.safeties} × ${RULES.safety}`,
+      value: stats.safeties === 1 ? "1 safety" : `${stats.safeties} safeties`,
       points: pts,
       rawValue: stats.safeties,
       multiplier: RULES.safety,
@@ -416,43 +397,34 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
   }
   if (stats.pointsAllowed !== undefined) {
     let pts = 0;
-    let paLabel = "";
     let explanation = "";
     if (stats.pointsAllowed === 0) {
       pts = 10;
-      paLabel = "0 pts";
       explanation = "A shutout! Holding the opponent scoreless earns the maximum 10 points.";
     } else if (stats.pointsAllowed <= 6) {
       pts = 7;
-      paLabel = "1-6 pts";
       explanation =
         "Allowing only 1-6 points is an excellent defensive performance worth 7 points.";
     } else if (stats.pointsAllowed <= 13) {
       pts = 4;
-      paLabel = "7-13 pts";
       explanation = "Allowing 7-13 points is a solid defensive game worth 4 points.";
     } else if (stats.pointsAllowed <= 20) {
       pts = 1;
-      paLabel = "14-20 pts";
       explanation = "Allowing 14-20 points is an average defensive performance worth 1 point.";
     } else if (stats.pointsAllowed <= 27) {
       pts = 0;
-      paLabel = "21-27 pts";
       explanation = "Allowing 21-27 points is below average and earns 0 points.";
     } else if (stats.pointsAllowed <= 34) {
       pts = -1;
-      paLabel = "28-34 pts";
       explanation = "Allowing 28-34 points is a poor defensive showing that costs 1 point.";
     } else {
       pts = -3;
-      paLabel = "35+ pts";
       explanation = "Allowing 35+ points is a bad defensive game that costs 3 points.";
     }
 
     statLines.push({
       label: "Points Allowed",
-      value: stats.pointsAllowed,
-      calculation: paLabel,
+      value: `${stats.pointsAllowed} pts`,
       points: pts,
       rawValue: stats.pointsAllowed,
       multiplier: pts,
@@ -492,10 +464,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
           <thead>
             <tr className="border-b border-dashed border-[rgba(255,255,255,0.2)]">
               <th className="py-1 text-left font-medium text-[var(--chalk-muted)]">Stat</th>
-              <th className="py-1 text-center font-medium text-[var(--chalk-muted)]">Value</th>
-              <th className="py-1 text-center font-medium text-[var(--chalk-muted)]">
-                Calculation
-              </th>
+              <th className="py-1 text-right font-medium text-[var(--chalk-muted)]">Value</th>
               <th className="py-1 text-right font-medium text-[var(--chalk-muted)]">Points</th>
             </tr>
           </thead>
@@ -507,7 +476,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
                     <span className="flex items-center gap-1">
                       {line.label}
                       <svg
-                        className="w-3 h-3 text-[var(--chalk-muted)] opacity-50"
+                        className="w-3 h-3 text-[var(--chalk-blue)] opacity-60"
                         fill="none"
                         stroke="currentColor"
                         viewBox="0 0 24 24"
@@ -521,11 +490,8 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
                       </svg>
                     </span>
                   </td>
-                  <td className="py-2 text-center font-mono text-[var(--chalk-white)]">
+                  <td className="py-2 text-right font-mono text-[var(--chalk-muted)]">
                     {line.value}
-                  </td>
-                  <td className="py-2 text-center text-[var(--chalk-muted)] font-mono text-xs">
-                    {line.calculation}
                   </td>
                   <td
                     className={`py-2 text-right font-semibold chalk-score ${
@@ -544,7 +510,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
           </tbody>
           <tfoot>
             <tr className="border-t-2 border-dashed border-[rgba(255,255,255,0.3)]">
-              <td colSpan={3} className="py-2 font-semibold text-[var(--chalk-white)]">
+              <td colSpan={2} className="py-2 font-semibold text-[var(--chalk-white)]">
                 Total
               </td>
               <td className="py-2 text-right font-bold text-[var(--chalk-green)] chalk-score">
