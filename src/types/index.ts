@@ -174,3 +174,55 @@ export interface ESPNScoringPlay {
     text: string;
   };
 }
+
+// Game and Playoff Types
+export type GameState = "pre" | "in" | "post";
+
+export interface GameTeam {
+  abbreviation: string;
+  displayName: string;
+  score: number;
+}
+
+export interface GameStatus {
+  state: GameState;
+  completed: boolean;
+  description: string;
+  detail: string;
+  displayClock?: string;
+  period?: number;
+}
+
+export interface GamePlayer {
+  playerId: string;
+  playerName: string;
+  position: string;
+  team: string;
+  ownerId: string;
+  ownerName: string;
+  rosterSlot: string;
+  isEliminated: boolean;
+  stats: {
+    passYards?: number;
+    passTd?: number;
+    passInt?: number;
+    rushYards?: number;
+    rushTd?: number;
+    recYards?: number;
+    recTd?: number;
+    receptions?: number;
+    fumblesLost?: number;
+  };
+  points: number;
+}
+
+export interface PlayoffGame {
+  eventId: string;
+  week: number;
+  name: string;
+  shortName: string;
+  status: GameStatus;
+  homeTeam: GameTeam;
+  awayTeam: GameTeam;
+  players: GamePlayer[];
+}
