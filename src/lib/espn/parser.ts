@@ -41,10 +41,20 @@ export function parsePlayerStats(summary: ESPNSummaryResponse): Map<string, Pars
 
   if (!box?.players) return statsMap;
 
+  // Build a map of team ID to team abbreviation from header
+  const teamIdToAbbrev = new Map<string, string>();
+  const competition = summary.header?.competitions?.[0];
+  if (competition) {
+    for (const competitor of competition.competitors) {
+      teamIdToAbbrev.set(competitor.id, competitor.team.abbreviation);
+    }
+  }
+
   // Process each team's players
   for (const playerSection of box.players) {
+    const teamAbbrev = teamIdToAbbrev.get(playerSection.team.id) || "";
     for (const category of playerSection.statistics) {
-      processPlayerCategory(category, statsMap);
+      processPlayerCategory(category, statsMap, teamAbbrev);
     }
   }
 
@@ -61,7 +71,8 @@ export function parsePlayerStats(summary: ESPNSummaryResponse): Map<string, Pars
  */
 function processPlayerCategory(
   category: ESPNPlayerCategory,
-  statsMap: Map<string, ParsedPlayerStats>
+  statsMap: Map<string, ParsedPlayerStats>,
+  teamAbbrev: string
 ): void {
   const { name: catName, labels, athletes } = category;
 
@@ -77,6 +88,7 @@ function processPlayerCategory(
       statsMap.set(normalizedName, {
         name: playerName,
         espnId: athlete.athlete.id,
+        team: teamAbbrev,
         stats: {
           passYards: 0,
           passTd: 0,

@@ -8,8 +8,10 @@ interface PlayerScore {
   id: string;
   name: string;
   position: string;
+  team: string | null;
   slot: string;
   points: number;
+  isEliminated: boolean;
   previousPoints?: number;
 }
 
@@ -18,11 +20,13 @@ interface OwnerRoster {
   ownerName: string;
   players: PlayerScore[];
   totalPoints: number;
+  activePlayers: number;
   previousTotal?: number;
 }
 
 interface LiveData {
   rosters: OwnerRoster[];
+  eliminatedTeams: string[];
   lastUpdated: string;
   week: number;
 }
@@ -186,7 +190,7 @@ export function LiveScoreboard() {
 
       {/* Leaderboard Summary */}
       <div className="chalk-box p-4">
-        <h2 className="text-lg font-bold text-[var(--chalk-white)] mb-3 chalk-text">Standings</h2>
+        <h2 className="text-lg font-bold text-[var(--chalk-white)] mb-3 chalk-text">Leaderboard</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
           {sortedRosters.map((roster, index) => {
             const pointChange =
@@ -206,6 +210,9 @@ export function LiveScoreboard() {
                 <div className="font-bold text-[var(--chalk-white)]">{roster.ownerName}</div>
                 <div className="text-lg font-bold text-[var(--chalk-green)] chalk-score">
                   {roster.totalPoints.toFixed(1)}
+                </div>
+                <div className="text-xs text-[var(--chalk-muted)]">
+                  {roster.activePlayers}/9 active
                 </div>
                 {isUp && (
                   <div className="text-xs text-green-400 animate-pulse">
@@ -237,7 +244,12 @@ export function LiveScoreboard() {
                 >
                   {index + 1}
                 </span>
-                <span className="font-bold text-[var(--chalk-white)]">{roster.ownerName}</span>
+                <div>
+                  <span className="font-bold text-[var(--chalk-white)]">{roster.ownerName}</span>
+                  <div className="text-xs text-[var(--chalk-muted)]">
+                    {roster.activePlayers}/9 active
+                  </div>
+                </div>
               </div>
               <span className="text-xl font-bold text-[var(--chalk-green)] chalk-score">
                 {roster.totalPoints.toFixed(1)}
@@ -259,13 +271,18 @@ export function LiveScoreboard() {
                     href={`/player/${player.id}`}
                     className={`flex items-center justify-between py-1 px-2 rounded hover:bg-[rgba(255,255,255,0.05)] transition-colors ${
                       isUp ? "bg-green-900/20" : ""
-                    }`}
+                    } ${player.isEliminated ? "opacity-50" : ""}`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className={`text-xs font-mono w-6 ${posColor}`}>{player.slot}</span>
                       <span className="text-sm text-[var(--chalk-white)] truncate">
                         {player.name}
                       </span>
+                      {player.isEliminated && (
+                        <span className="text-xs text-red-400 px-1 py-0.5 bg-red-900/30 rounded">
+                          OUT
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1">
                       {isUp && (

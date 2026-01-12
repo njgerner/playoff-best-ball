@@ -8,6 +8,8 @@ interface PlayerRowProps {
   points: number;
   playerId?: string;
   compact?: boolean;
+  isEliminated?: boolean;
+  teamUnknown?: boolean;
 }
 
 const slotClasses: Record<string, string> = {
@@ -22,12 +24,21 @@ const slotClasses: Record<string, string> = {
   DST: "chalk-badge-dst",
 };
 
-export function PlayerRow({ slot, name, points, playerId, compact = false }: PlayerRowProps) {
+export function PlayerRow({
+  slot,
+  name,
+  points,
+  playerId,
+  compact = false,
+  isEliminated = false,
+  teamUnknown = false,
+}: PlayerRowProps) {
   const badgeClass = slotClasses[slot] ?? "chalk-badge-flex";
   const displaySlot = slot.replace(/[0-9]/g, "");
 
-  const scoreClass =
-    points > 0
+  const scoreClass = isEliminated
+    ? "text-[var(--chalk-muted)]"
+    : points > 0
       ? "text-[var(--chalk-green)]"
       : points < 0
         ? "text-[var(--chalk-red)]"
@@ -36,12 +47,27 @@ export function PlayerRow({ slot, name, points, playerId, compact = false }: Pla
   const content = (
     <>
       <div className="flex items-center gap-2">
-        <span className={`chalk-badge ${badgeClass} ${compact ? "text-xs px-1" : ""}`}>
+        <span
+          className={`chalk-badge ${badgeClass} ${compact ? "text-xs px-1" : ""} ${isEliminated ? "opacity-50" : ""}`}
+        >
           {displaySlot}
         </span>
-        <span className={`font-medium text-[var(--chalk-white)] ${compact ? "text-sm" : ""}`}>
+        <span
+          className={`font-medium ${compact ? "text-sm" : ""} ${isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-white)]"}`}
+        >
           {name}
         </span>
+        {isEliminated && (
+          <span className="text-[8px] text-red-400 bg-red-900/30 px-1 py-0.5 rounded">OUT</span>
+        )}
+        {teamUnknown && !isEliminated && (
+          <span
+            className="text-[8px] text-yellow-400 bg-yellow-900/30 px-1 py-0.5 rounded"
+            title="Team status unknown"
+          >
+            ?
+          </span>
+        )}
       </div>
       <div className="flex items-center gap-1">
         <span className={`font-bold chalk-score ${scoreClass} ${compact ? "text-sm" : ""}`}>
@@ -53,7 +79,7 @@ export function PlayerRow({ slot, name, points, playerId, compact = false }: Pla
 
   const baseClasses = `flex items-center justify-between ${
     compact ? "py-1.5" : "py-2"
-  } border-b border-dashed border-[rgba(255,255,255,0.1)] last:border-0`;
+  } border-b border-dashed border-[rgba(255,255,255,0.1)] last:border-0 ${isEliminated ? "opacity-60" : ""}`;
 
   if (playerId) {
     return (
@@ -62,14 +88,27 @@ export function PlayerRow({ slot, name, points, playerId, compact = false }: Pla
         className={`${baseClasses} hover:bg-[rgba(255,255,255,0.05)] rounded px-2 -mx-2 transition-colors cursor-pointer group`}
       >
         <div className="flex items-center gap-2">
-          <span className={`chalk-badge ${badgeClass} ${compact ? "text-xs px-1" : ""}`}>
+          <span
+            className={`chalk-badge ${badgeClass} ${compact ? "text-xs px-1" : ""} ${isEliminated ? "opacity-50" : ""}`}
+          >
             {displaySlot}
           </span>
           <span
-            className={`font-medium text-[var(--chalk-white)] group-hover:text-[var(--chalk-pink)] ${compact ? "text-sm" : ""}`}
+            className={`font-medium group-hover:text-[var(--chalk-pink)] ${compact ? "text-sm" : ""} ${isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-white)]"}`}
           >
             {name}
           </span>
+          {isEliminated && (
+            <span className="text-[8px] text-red-400 bg-red-900/30 px-1 py-0.5 rounded">OUT</span>
+          )}
+          {teamUnknown && !isEliminated && (
+            <span
+              className="text-[8px] text-yellow-400 bg-yellow-900/30 px-1 py-0.5 rounded"
+              title="Team status unknown"
+            >
+              ?
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <span className={`font-bold chalk-score ${scoreClass} ${compact ? "text-sm" : ""}`}>

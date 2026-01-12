@@ -1,0 +1,643 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { fetchScoreboard, fetchGameSummary, getEliminatedTeams } from "@/lib/espn/client";
+import { parsePlayerStats, parseDefenseStats, calculateTotalPoints } from "@/lib/espn";
+import prisma from "@/lib/db";
+import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+
+export const dynamic = "force-dynamic";
+
+interface GamePlayer {
+  playerId: string;
+  playerName: string;
+  position: string;
+  team: string;
+  ownerId: string;
+  ownerName: string;
+  rosterSlot: string;
+  isEliminated: boolean;
+  stats: {
+    passYards?: number;
+    passTd?: number;
+    passInt?: number;
+    rushYards?: number;
+    rushTd?: number;
+    recYards?: number;
+    recTd?: number;
+    receptions?: number;
+    fumblesLost?: number;
+  };
+  points: number;
+}
+
+const POSITION_COLORS: Record<string, string> = {
+  QB: "text-red-400",
+  RB: "text-green-400",
+  WR: "text-blue-400",
+  TE: "text-yellow-400",
+  K: "text-purple-400",
+  DST: "text-orange-400",
+  FLEX: "text-pink-400",
+};
+
+function StatChip({
+  label,
+  value,
+  points,
+  isNegative,
+}: {
+  label: string;
+  value: string;
+  points?: number;
+  isNegative?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-1 rounded text-sm ${
+        isNegative
+          ? "bg-red-900/30 text-red-400"
+          : points && points > 0
+            ? "bg-green-900/30 text-green-400"
+            : "bg-[rgba(255,255,255,0.1)] text-[var(--chalk-muted)]"
+      }`}
+    >
+      <span className="font-medium">{value}</span>
+      <span className="opacity-70">{label}</span>
+      {points !== undefined && (
+        <span className="font-bold">
+          {points >= 0 ? "+" : ""}
+          {points.toFixed(1)}
+        </span>
+      )}
+    </span>
+  );
+}
+
+function PlayerCard({ player }: { player: GamePlayer }) {
+  const posColor = POSITION_COLORS[player.position] || "text-[var(--chalk-white)]";
+
+  // Build stat chips
+  const statChips: React.ReactNode[] = [];
+
+  if (player.stats.passYards) {
+    statChips.push(
+      <StatChip
+        key="passYds"
+        label="pass yds"
+        value={String(player.stats.passYards)}
+        points={player.stats.passYards / 30}
+      />
+    );
+  }
+  if (player.stats.passTd) {
+    statChips.push(
+      <StatChip
+        key="passTd"
+        label="TD"
+        value={String(player.stats.passTd)}
+        points={player.stats.passTd * 6}
+      />
+    );
+  }
+  if (player.stats.passInt) {
+    statChips.push(
+      <StatChip
+        key="passInt"
+        label="INT"
+        value={String(player.stats.passInt)}
+        points={player.stats.passInt * -2}
+        isNegative
+      />
+    );
+  }
+  if (player.stats.rushYards) {
+    statChips.push(
+      <StatChip
+        key="rushYds"
+        label="rush yds"
+        value={String(player.stats.rushYards)}
+        points={player.stats.rushYards / 10}
+      />
+    );
+  }
+  if (player.stats.rushTd) {
+    statChips.push(
+      <StatChip
+        key="rushTd"
+        label="TD"
+        value={String(player.stats.rushTd)}
+        points={player.stats.rushTd * 6}
+      />
+    );
+  }
+  if (player.stats.receptions) {
+    statChips.push(
+      <StatChip
+        key="rec"
+        label="rec"
+        value={String(player.stats.receptions)}
+        points={player.stats.receptions * 0.5}
+      />
+    );
+  }
+  if (player.stats.recYards) {
+    statChips.push(
+      <StatChip
+        key="recYds"
+        label="rec yds"
+        value={String(player.stats.recYards)}
+        points={player.stats.recYards / 10}
+      />
+    );
+  }
+  if (player.stats.recTd) {
+    statChips.push(
+      <StatChip
+        key="recTd"
+        label="TD"
+        value={String(player.stats.recTd)}
+        points={player.stats.recTd * 6}
+      />
+    );
+  }
+  if (player.stats.fumblesLost) {
+    statChips.push(
+      <StatChip
+        key="fumble"
+        label="fumble"
+        value={String(player.stats.fumblesLost)}
+        points={player.stats.fumblesLost * -2}
+        isNegative
+      />
+    );
+  }
+
+  return (
+    <Link
+      href={`/player/${player.playerId}`}
+      className={`block p-4 rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors border ${
+        player.isEliminated
+          ? "border-red-900/30 bg-red-900/10"
+          : "border-transparent bg-[rgba(0,0,0,0.2)]"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span
+              className={`text-sm font-mono ${player.isEliminated ? "text-red-400/50" : posColor}`}
+            >
+              {player.position}
+            </span>
+            <span
+              className={`text-lg font-bold ${player.isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-white)]"}`}
+            >
+              {player.playerName}
+            </span>
+          </div>
+          <div className="text-sm text-[var(--chalk-muted)] mb-3">
+            Rostered by <span className="text-[var(--chalk-white)]">{player.ownerName}</span>
+            <span className="ml-2 text-xs">({player.rosterSlot})</span>
+          </div>
+
+          {player.isEliminated && (
+            <div className="mb-3 text-sm text-red-400 flex items-center gap-2">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path
+                  fillRule="evenodd"
+                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              Eliminated - No more points possible
+            </div>
+          )}
+
+          {statChips.length > 0 && <div className="flex flex-wrap gap-2">{statChips}</div>}
+          {statChips.length === 0 && !player.isEliminated && (
+            <div className="text-sm text-[var(--chalk-muted)]">No stats yet</div>
+          )}
+        </div>
+
+        <div className="text-right">
+          <div
+            className={`text-2xl font-bold ${
+              player.isEliminated
+                ? "text-[var(--chalk-muted)]"
+                : player.points > 0
+                  ? "text-[var(--chalk-green)]"
+                  : "text-[var(--chalk-muted)]"
+            }`}
+          >
+            {player.points.toFixed(1)}
+          </div>
+          <div className="text-xs text-[var(--chalk-muted)]">pts</div>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function formatQuarter(period?: number): string {
+  if (!period) return "";
+  if (period <= 4) return `Q${period}`;
+  return `OT${period - 4 > 1 ? period - 4 : ""}`;
+}
+
+export default async function GamePage({ params }: { params: Promise<{ eventId: string }> }) {
+  const { eventId } = await params;
+
+  // Find which week this game is in
+  const weeks = [1, 2, 3, 5];
+  let gameEvent = null;
+  let gameWeek = 1;
+
+  for (const week of weeks) {
+    const events = await fetchScoreboard(week);
+    const found = events.find((e) => e.id === eventId);
+    if (found) {
+      gameEvent = found;
+      gameWeek = week;
+      break;
+    }
+  }
+
+  if (!gameEvent) {
+    notFound();
+  }
+
+  const competition = gameEvent.competitions[0];
+  if (!competition) {
+    notFound();
+  }
+
+  const homeCompetitor = competition.competitors.find((c) => c.homeAway === "home");
+  const awayCompetitor = competition.competitors.find((c) => c.homeAway === "away");
+
+  if (!homeCompetitor || !awayCompetitor) {
+    notFound();
+  }
+
+  // Get eliminated teams
+  const eliminatedTeams = await getEliminatedTeams();
+
+  // Get rostered players
+  const rosters = await prisma.roster.findMany({
+    where: { year: CURRENT_SEASON_YEAR },
+    include: {
+      player: true,
+      owner: true,
+    },
+  });
+
+  // Create lookup maps
+  const playerRosterMap = new Map<
+    string,
+    {
+      playerId: string;
+      ownerId: string;
+      ownerName: string;
+      rosterSlot: string;
+      team: string | null;
+    }
+  >();
+  for (const roster of rosters) {
+    const normalizedName = roster.player.name.toLowerCase().trim();
+    playerRosterMap.set(normalizedName, {
+      playerId: roster.player.id,
+      ownerId: roster.owner.id,
+      ownerName: roster.owner.name,
+      rosterSlot: roster.rosterSlot,
+      team: roster.player.team,
+    });
+  }
+
+  const dstRosterMap = new Map<
+    string,
+    { playerId: string; ownerId: string; ownerName: string; rosterSlot: string }
+  >();
+  for (const roster of rosters) {
+    if (roster.player.position === "DST" && roster.player.team) {
+      dstRosterMap.set(roster.player.team.toUpperCase(), {
+        playerId: roster.player.id,
+        ownerId: roster.owner.id,
+        ownerName: roster.owner.name,
+        rosterSlot: roster.rosterSlot,
+      });
+    }
+  }
+
+  // Fetch game details
+  const players: GamePlayer[] = [];
+  const isLive = gameEvent.status.type.state === "in";
+  const isCompleted = gameEvent.status.type.completed;
+  const isScheduled = gameEvent.status.type.state === "pre";
+
+  if (!isScheduled) {
+    const summary = await fetchGameSummary(eventId);
+    if (summary) {
+      const playerStats = parsePlayerStats(summary);
+      calculateTotalPoints(playerStats);
+
+      const defenseStats = parseDefenseStats(summary);
+
+      // Match players
+      for (const [, player] of playerStats) {
+        const normalizedName = player.name.toLowerCase().trim();
+        const rosterInfo = playerRosterMap.get(normalizedName);
+
+        if (rosterInfo) {
+          const playerTeam = (player.team || "").toUpperCase();
+          players.push({
+            playerId: rosterInfo.playerId,
+            playerName: player.name,
+            position: player.position || "FLEX",
+            team: player.team || "",
+            ownerId: rosterInfo.ownerId,
+            ownerName: rosterInfo.ownerName,
+            rosterSlot: rosterInfo.rosterSlot,
+            isEliminated: eliminatedTeams.has(playerTeam),
+            stats: {
+              passYards: player.stats.passYards || undefined,
+              passTd: player.stats.passTd || undefined,
+              passInt: player.stats.passInt || undefined,
+              rushYards: player.stats.rushYards || undefined,
+              rushTd: player.stats.rushTd || undefined,
+              recYards: player.stats.recYards || undefined,
+              recTd: player.stats.recTd || undefined,
+              receptions: player.stats.receptions || undefined,
+              fumblesLost: player.stats.fumblesLost || undefined,
+            },
+            points: player.totalPoints,
+          });
+        }
+      }
+
+      // Match defense stats
+      for (const [key, defense] of defenseStats) {
+        if (!key.includes("dst")) continue;
+        const rosterInfo = dstRosterMap.get(defense.abbreviation.toUpperCase());
+        if (rosterInfo) {
+          players.push({
+            playerId: rosterInfo.playerId,
+            playerName: `${defense.teamName} DST`,
+            position: "DST",
+            team: defense.abbreviation,
+            ownerId: rosterInfo.ownerId,
+            ownerName: rosterInfo.ownerName,
+            rosterSlot: rosterInfo.rosterSlot,
+            isEliminated: eliminatedTeams.has(defense.abbreviation.toUpperCase()),
+            stats: {},
+            points: defense.totalPoints,
+          });
+        }
+      }
+    }
+  }
+
+  // Group players by team
+  const awayPlayers = players.filter(
+    (p) => p.team.toUpperCase() === awayCompetitor.team.abbreviation.toUpperCase()
+  );
+  const homePlayers = players.filter(
+    (p) => p.team.toUpperCase() === homeCompetitor.team.abbreviation.toUpperCase()
+  );
+
+  const awayScore = parseInt(awayCompetitor.score) || 0;
+  const homeScore = parseInt(homeCompetitor.score) || 0;
+  const awayWinning = awayScore > homeScore;
+  const homeWinning = homeScore > awayScore;
+
+  const awayEliminated = eliminatedTeams.has(awayCompetitor.team.abbreviation.toUpperCase());
+  const homeEliminated = eliminatedTeams.has(homeCompetitor.team.abbreviation.toUpperCase());
+
+  const awayFantasyPts = awayPlayers.reduce((sum, p) => sum + p.points, 0);
+  const homeFantasyPts = homePlayers.reduce((sum, p) => sum + p.points, 0);
+
+  const weekLabels: Record<number, string> = {
+    1: "Wild Card",
+    2: "Divisional",
+    3: "Conference Championship",
+    5: "Super Bowl",
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Back Link */}
+      <Link
+        href="/schedule"
+        className="inline-flex items-center gap-2 text-[var(--chalk-blue)] hover:text-[var(--chalk-pink)] transition-colors"
+      >
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Schedule
+      </Link>
+
+      {/* Game Header */}
+      <div className="chalk-box p-6">
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-sm text-[var(--chalk-muted)]">
+            {weekLabels[gameWeek] || `Week ${gameWeek}`}
+          </span>
+          {isLive && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-green-900/50 text-green-400 text-sm font-medium animate-pulse">
+              <span className="w-2 h-2 bg-green-400 rounded-full"></span>
+              LIVE
+            </span>
+          )}
+          {isCompleted && (
+            <span className="inline-flex items-center px-3 py-1 rounded-full bg-gray-700/50 text-gray-400 text-sm font-medium">
+              FINAL
+            </span>
+          )}
+          {isScheduled && (
+            <span className="inline-flex items-center px-3 py-1 rounded-full bg-blue-900/50 text-blue-400 text-sm font-medium">
+              {gameEvent.status.type.detail}
+            </span>
+          )}
+        </div>
+
+        {/* Scoreboard */}
+        <div className="flex items-center justify-center gap-8">
+          {/* Away Team */}
+          <div className="text-center">
+            <div
+              className={`text-3xl font-bold mb-1 ${
+                awayEliminated
+                  ? "text-red-400/50"
+                  : awayWinning && !isScheduled
+                    ? "text-[var(--chalk-green)]"
+                    : "text-[var(--chalk-white)]"
+              }`}
+            >
+              {awayCompetitor.team.abbreviation}
+            </div>
+            {awayEliminated && <div className="text-xs text-red-400 font-medium mb-1">OUT</div>}
+            <div className="text-sm text-[var(--chalk-muted)]">
+              {awayCompetitor.team.displayName}
+            </div>
+            {!isScheduled && (
+              <div
+                className={`text-4xl font-bold mt-2 chalk-score ${
+                  awayWinning ? "text-[var(--chalk-green)]" : "text-[var(--chalk-white)]"
+                }`}
+              >
+                {awayScore}
+              </div>
+            )}
+          </div>
+
+          {/* Center Info */}
+          <div className="text-center px-8">
+            {isLive && gameEvent.status.displayClock && (
+              <div className="text-[var(--chalk-green)]">
+                <div className="text-lg font-medium">{formatQuarter(gameEvent.status.period)}</div>
+                <div className="text-2xl font-bold">{gameEvent.status.displayClock}</div>
+              </div>
+            )}
+            {!isLive && <div className="text-[var(--chalk-muted)] text-xl">@</div>}
+          </div>
+
+          {/* Home Team */}
+          <div className="text-center">
+            <div
+              className={`text-3xl font-bold mb-1 ${
+                homeEliminated
+                  ? "text-red-400/50"
+                  : homeWinning && !isScheduled
+                    ? "text-[var(--chalk-green)]"
+                    : "text-[var(--chalk-white)]"
+              }`}
+            >
+              {homeCompetitor.team.abbreviation}
+            </div>
+            {homeEliminated && <div className="text-xs text-red-400 font-medium mb-1">OUT</div>}
+            <div className="text-sm text-[var(--chalk-muted)]">
+              {homeCompetitor.team.displayName}
+            </div>
+            {!isScheduled && (
+              <div
+                className={`text-4xl font-bold mt-2 chalk-score ${
+                  homeWinning ? "text-[var(--chalk-green)]" : "text-[var(--chalk-white)]"
+                }`}
+              >
+                {homeScore}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Your Players Section */}
+      {(awayPlayers.length > 0 || homePlayers.length > 0) && (
+        <div className="chalk-box p-6">
+          <h2 className="text-xl font-bold text-[var(--chalk-white)] mb-6">
+            Your Players in This Game
+          </h2>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Away Team Players */}
+            <div>
+              <div
+                className={`flex items-center justify-between p-3 rounded-lg mb-4 ${
+                  awayEliminated ? "bg-red-900/20" : "bg-[rgba(255,255,255,0.05)]"
+                }`}
+              >
+                <span
+                  className={`text-lg font-bold ${
+                    awayEliminated ? "text-red-400" : "text-[var(--chalk-white)]"
+                  }`}
+                >
+                  {awayCompetitor.team.abbreviation}
+                  {awayEliminated && " - Eliminated"}
+                </span>
+                <span
+                  className={`text-lg font-bold ${
+                    awayEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-green)]"
+                  }`}
+                >
+                  {awayFantasyPts.toFixed(1)} pts
+                </span>
+              </div>
+              {awayPlayers.length > 0 ? (
+                <div className="space-y-3">
+                  {awayPlayers.map((player) => (
+                    <PlayerCard key={player.playerId} player={player} />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-[var(--chalk-muted)]">
+                  No rostered players
+                </div>
+              )}
+            </div>
+
+            {/* Home Team Players */}
+            <div>
+              <div
+                className={`flex items-center justify-between p-3 rounded-lg mb-4 ${
+                  homeEliminated ? "bg-red-900/20" : "bg-[rgba(255,255,255,0.05)]"
+                }`}
+              >
+                <span
+                  className={`text-lg font-bold ${
+                    homeEliminated ? "text-red-400" : "text-[var(--chalk-white)]"
+                  }`}
+                >
+                  {homeCompetitor.team.abbreviation}
+                  {homeEliminated && " - Eliminated"}
+                </span>
+                <span
+                  className={`text-lg font-bold ${
+                    homeEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-green)]"
+                  }`}
+                >
+                  {homeFantasyPts.toFixed(1)} pts
+                </span>
+              </div>
+              {homePlayers.length > 0 ? (
+                <div className="space-y-3">
+                  {homePlayers.map((player) => (
+                    <PlayerCard key={player.playerId} player={player} />
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-[var(--chalk-muted)]">
+                  No rostered players
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* No Players Message */}
+      {awayPlayers.length === 0 && homePlayers.length === 0 && !isScheduled && (
+        <div className="chalk-box p-6 text-center">
+          <div className="text-[var(--chalk-muted)]">
+            No rostered players from your league are in this game
+          </div>
+        </div>
+      )}
+
+      {isScheduled && (
+        <div className="chalk-box p-6 text-center">
+          <div className="text-[var(--chalk-muted)]">
+            Game has not started yet. Check back when the game begins to see player stats.
+          </div>
+        </div>
+      )}
+
+      {/* Scoring Link */}
+      <div className="text-center">
+        <Link
+          href="/scoring"
+          className="text-[var(--chalk-blue)] hover:text-[var(--chalk-pink)] text-sm transition-colors"
+        >
+          View all scoring rules
+        </Link>
+      </div>
+    </div>
+  );
+}

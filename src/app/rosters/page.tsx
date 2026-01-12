@@ -1,6 +1,7 @@
 import prisma from "@/lib/db";
 import { RosterCard } from "@/components/roster-card";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+import { getEliminatedTeams } from "@/lib/espn/client";
 
 // Placeholder data matching your spreadsheet
 const PLACEHOLDER_ROSTERS = [
@@ -152,6 +153,7 @@ async function getRosterData() {
         name: r.player.name,
         points: r.player.scores.reduce((sum, s) => sum + s.points, 0),
         playerId: r.player.id,
+        team: r.player.team,
       })),
     }));
   } catch (error) {
@@ -161,15 +163,38 @@ async function getRosterData() {
 }
 
 export default async function RostersPage() {
-  const rosters = await getRosterData();
+  const [rosters, eliminatedTeams] = await Promise.all([getRosterData(), getEliminatedTeams()]);
 
-  // Calculate totals and sort by total points
+  // Calculate totals and active players, sort by total points
   const rostersWithTotals = rosters
-    .map((r) => ({
-      ...r,
-      totalPoints: r.roster.reduce((sum, p) => sum + p.points, 0),
-    }))
+    .map((r) => {
+      let activePlayers = 0;
+      let unknownPlayers = 0;
+      let eliminatedPlayers = 0;
+
+      for (const p of r.roster) {
+        const team = "team" in p ? (p.team as string | null | undefined) : null;
+        if (!team) {
+          unknownPlayers++;
+          activePlayers++; // Count unknown as active for now
+        } else if (eliminatedTeams.has(team.toUpperCase())) {
+          eliminatedPlayers++;
+        } else {
+          activePlayers++;
+        }
+      }
+
+      return {
+        ...r,
+        totalPoints: r.roster.reduce((sum, p) => sum + p.points, 0),
+        activePlayers,
+        unknownPlayers,
+        eliminatedPlayers,
+      };
+    })
     .sort((a, b) => b.totalPoints - a.totalPoints);
+
+  const eliminatedArray = Array.from(eliminatedTeams);
 
   return (
     <div className="space-y-6">
@@ -180,6 +205,14 @@ export default async function RostersPage() {
         </p>
       </div>
 
+      {/* Eliminated Teams Banner */}
+      {eliminatedArray.length > 0 && (
+        <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3">
+          <div className="text-xs text-red-400 font-medium mb-1">Eliminated Teams</div>
+          <div className="text-sm text-[var(--chalk-muted)]">{eliminatedArray.join(", ")}</div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {rostersWithTotals.map((roster, index) => (
           <RosterCard
@@ -189,6 +222,9 @@ export default async function RostersPage() {
             totalPoints={roster.totalPoints}
             rank={index + 1}
             compact={true}
+            eliminatedTeams={eliminatedArray}
+            activePlayers={roster.activePlayers}
+            unknownPlayers={roster.unknownPlayers}
           />
         ))}
       </div>

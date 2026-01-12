@@ -10,6 +10,22 @@ export interface ESPNScoreboardResponse {
 export interface ESPNEvent {
   id: string;
   name: string;
+  shortName?: string;
+  date: string;
+  status: {
+    type: {
+      id: string;
+      name: string; // "STATUS_SCHEDULED" | "STATUS_IN_PROGRESS" | "STATUS_FINAL" etc.
+      state: string; // "pre" | "in" | "post"
+      completed: boolean;
+      description: string; // "Scheduled" | "In Progress" | "Final" etc.
+      detail: string; // "1/18 - 4:30 PM" or "Q2 8:42" or "Final"
+      shortDetail: string;
+    };
+    clock?: number; // seconds remaining in period
+    displayClock?: string; // "8:42"
+    period?: number; // quarter number
+  };
   competitions: ESPNCompetition[];
 }
 
@@ -20,6 +36,7 @@ export interface ESPNCompetition {
 
 export interface ESPNCompetitor {
   id: string;
+  homeAway: "home" | "away";
   team: ESPNTeam;
   score: string;
 }

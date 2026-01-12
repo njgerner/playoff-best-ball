@@ -87,3 +87,36 @@ export async function fetchAllPlayoffStats(
 
   return results;
 }
+
+/**
+ * Get a set of eliminated team abbreviations based on completed playoff games
+ * A team is eliminated if they lost a completed game
+ */
+export async function getEliminatedTeams(weeks: number[] = [1, 2, 3, 5]): Promise<Set<string>> {
+  const eliminatedTeams = new Set<string>();
+  const allGames = await fetchAllPlayoffGames(weeks);
+
+  for (const { events } of allGames) {
+    for (const event of events) {
+      // Only consider completed games
+      if (!event.status.type.completed) continue;
+
+      const competition = event.competitions[0];
+      if (!competition || competition.competitors.length !== 2) continue;
+
+      const [team1, team2] = competition.competitors;
+      const score1 = parseInt(team1.score) || 0;
+      const score2 = parseInt(team2.score) || 0;
+
+      // The losing team is eliminated
+      if (score1 > score2) {
+        eliminatedTeams.add(team2.team.abbreviation.toUpperCase());
+      } else if (score2 > score1) {
+        eliminatedTeams.add(team1.team.abbreviation.toUpperCase());
+      }
+      // Tie games (rare in playoffs) - neither eliminated
+    }
+  }
+
+  return eliminatedTeams;
+}

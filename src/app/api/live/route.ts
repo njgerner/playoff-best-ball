@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+import { getEliminatedTeams } from "@/lib/espn/client";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,9 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const year = parseInt(url.searchParams.get("year") || String(CURRENT_SEASON_YEAR));
+
+    // Get eliminated teams
+    const eliminatedTeams = await getEliminatedTeams();
 
     // Get all owners with their rosters and player scores
     const owners = await prisma.owner.findMany({
@@ -36,12 +40,15 @@ export async function GET(request: Request) {
     const rosters = owners.map((owner) => {
       const players = owner.rosters.map((roster) => {
         const totalPoints = roster.player.scores.reduce((sum, s) => sum + s.points, 0);
+        const playerTeam = (roster.player.team || "").toUpperCase();
         return {
           id: roster.player.id,
           name: roster.player.name,
           position: roster.player.position,
+          team: roster.player.team,
           slot: roster.rosterSlot,
           points: totalPoints,
+          isEliminated: eliminatedTeams.has(playerTeam),
           weeklyScores: roster.player.scores.map((s) => ({
             week: s.week,
             points: s.points,
@@ -54,12 +61,14 @@ export async function GET(request: Request) {
       players.sort((a, b) => slotOrder.indexOf(a.slot) - slotOrder.indexOf(b.slot));
 
       const totalPoints = players.reduce((sum, p) => sum + p.points, 0);
+      const activePlayers = players.filter((p) => !p.isEliminated).length;
 
       return {
         ownerId: owner.id,
         ownerName: owner.name,
         players,
         totalPoints,
+        activePlayers,
       };
     });
 
@@ -76,6 +85,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json({
       rosters,
+      eliminatedTeams: Array.from(eliminatedTeams),
       lastUpdated: new Date().toISOString(),
       week: currentWeek,
       year,
