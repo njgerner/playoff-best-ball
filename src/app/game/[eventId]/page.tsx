@@ -347,7 +347,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
         const rosterInfo = playerRosterMap.get(normalizedName);
 
         if (rosterInfo) {
-          const playerTeam = (player.team || rosterInfo.team || "").toUpperCase();
+          const playerTeam = (player.team || "").toUpperCase();
           players.push({
             playerId: rosterInfo.playerId,
             playerName: player.name,
