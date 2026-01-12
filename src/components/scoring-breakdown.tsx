@@ -87,80 +87,116 @@ function formatPoints(pts: number): string {
 function CalculationTooltip({ line, children }: { line: StatLine; children: React.ReactNode }) {
   const [isOpen, setIsOpen] = useState(false);
 
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(!isOpen);
+  };
+
+  const handleClose = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsOpen(false);
+  };
+
   return (
     <div className="relative inline-block w-full">
       <div
         onMouseEnter={() => setIsOpen(true)}
         onMouseLeave={() => setIsOpen(false)}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleClick}
         className="cursor-help"
       >
         {children}
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 left-0 right-0 mt-1 p-4 bg-[#1a1a2e] border border-[var(--chalk-blue)] rounded-lg shadow-xl text-sm animate-in fade-in duration-150">
-          <div className="space-y-3">
-            {/* Header */}
-            <div className="flex justify-between items-center border-b border-[rgba(255,255,255,0.1)] pb-2">
-              <span className="font-bold text-[var(--chalk-yellow)]">{line.label}</span>
-              <span className="text-[var(--chalk-green)] font-bold">
-                {formatPoints(line.points)} pts
-              </span>
-            </div>
-
-            {/* Calculation breakdown */}
-            <div className="space-y-2">
-              <div className="text-[var(--chalk-muted)] text-xs uppercase tracking-wide">
-                Calculation
+        <>
+          {/* Mobile backdrop for easy dismissal */}
+          <div className="md:hidden fixed inset-0 z-40" onClick={handleClose} />
+          <div className="absolute z-50 left-0 right-0 md:left-auto md:right-auto md:w-80 mt-1 p-4 bg-[#1a1a2e] border border-[var(--chalk-blue)] rounded-lg shadow-xl text-sm animate-in fade-in duration-150">
+            <div className="space-y-3">
+              {/* Header with close button on mobile */}
+              <div className="flex justify-between items-center border-b border-[rgba(255,255,255,0.1)] pb-2">
+                <span className="font-bold text-[var(--chalk-yellow)]">{line.label}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[var(--chalk-green)] font-bold">
+                    {formatPoints(line.points)} pts
+                  </span>
+                  {/* Close button - always visible but especially important on touch */}
+                  <button
+                    onClick={handleClose}
+                    className="ml-2 p-1 rounded-full hover:bg-[rgba(255,255,255,0.1)] transition-colors min-w-[28px] min-h-[28px] flex items-center justify-center"
+                    aria-label="Close"
+                  >
+                    <svg
+                      className="w-4 h-4 text-[var(--chalk-muted)]"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
               </div>
 
-              <div className="bg-[rgba(0,0,0,0.3)] rounded p-3 font-mono text-center">
-                {line.operation === "divide" ? (
-                  <div className="space-y-1">
-                    <div className="text-[var(--chalk-white)] text-lg">{line.rawValue}</div>
-                    <div className="border-t border-[var(--chalk-muted)] w-16 mx-auto"></div>
-                    <div className="text-[var(--chalk-muted)]">{line.multiplier}</div>
-                    <div className="text-[var(--chalk-blue)] mt-2">
-                      = {(line.rawValue / line.multiplier).toFixed(2)}
+              {/* Calculation breakdown */}
+              <div className="space-y-2">
+                <div className="text-[var(--chalk-muted)] text-xs uppercase tracking-wide">
+                  Calculation
+                </div>
+
+                <div className="bg-[rgba(0,0,0,0.3)] rounded p-3 font-mono text-center">
+                  {line.operation === "divide" ? (
+                    <div className="space-y-1">
+                      <div className="text-[var(--chalk-white)] text-lg">{line.rawValue}</div>
+                      <div className="border-t border-[var(--chalk-muted)] w-16 mx-auto"></div>
+                      <div className="text-[var(--chalk-muted)]">{line.multiplier}</div>
+                      <div className="text-[var(--chalk-blue)] mt-2">
+                        = {(line.rawValue / line.multiplier).toFixed(2)}
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <div className="space-y-1">
-                    <div className="flex items-center justify-center gap-2">
-                      <span className="text-[var(--chalk-white)] text-lg">{line.rawValue}</span>
-                      <span className="text-[var(--chalk-muted)]">×</span>
-                      <span className="text-[var(--chalk-white)] text-lg">{line.multiplier}</span>
+                  ) : (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-center gap-2">
+                        <span className="text-[var(--chalk-white)] text-lg">{line.rawValue}</span>
+                        <span className="text-[var(--chalk-muted)]">×</span>
+                        <span className="text-[var(--chalk-white)] text-lg">{line.multiplier}</span>
+                      </div>
+                      <div className="text-[var(--chalk-blue)] mt-2">
+                        = {(line.rawValue * line.multiplier).toFixed(1)}
+                      </div>
                     </div>
-                    <div className="text-[var(--chalk-blue)] mt-2">
-                      = {(line.rawValue * line.multiplier).toFixed(1)}
-                    </div>
-                  </div>
-                )}
+                  )}
+                </div>
+              </div>
+
+              {/* Explanation */}
+              <div className="space-y-1">
+                <div className="text-[var(--chalk-muted)] text-xs uppercase tracking-wide">
+                  Scoring Rule
+                </div>
+                <p className="text-[var(--chalk-white)] text-xs leading-relaxed">
+                  {line.explanation}
+                </p>
+              </div>
+
+              {/* Formula summary */}
+              <div className="bg-[rgba(255,255,255,0.05)] rounded p-2 text-xs text-center text-[var(--chalk-muted)]">
+                {line.operation === "divide"
+                  ? `${line.rawValue} ÷ ${line.multiplier} = ${line.points.toFixed(1)} pts`
+                  : `${line.rawValue} × ${line.multiplier} = ${line.points.toFixed(1)} pts`}
               </div>
             </div>
 
-            {/* Explanation */}
-            <div className="space-y-1">
-              <div className="text-[var(--chalk-muted)] text-xs uppercase tracking-wide">
-                Scoring Rule
-              </div>
-              <p className="text-[var(--chalk-white)] text-xs leading-relaxed">
-                {line.explanation}
-              </p>
-            </div>
-
-            {/* Formula summary */}
-            <div className="bg-[rgba(255,255,255,0.05)] rounded p-2 text-xs text-center text-[var(--chalk-muted)]">
-              {line.operation === "divide"
-                ? `${line.rawValue} ÷ ${line.multiplier} = ${line.points.toFixed(1)} pts`
-                : `${line.rawValue} × ${line.multiplier} = ${line.points.toFixed(1)} pts`}
-            </div>
+            {/* Arrow pointer - hidden on mobile for cleaner look */}
+            <div className="hidden md:block absolute -top-2 left-4 w-3 h-3 bg-[#1a1a2e] border-l border-t border-[var(--chalk-blue)] transform rotate-45"></div>
           </div>
-
-          {/* Arrow pointer */}
-          <div className="absolute -top-2 left-4 w-3 h-3 bg-[#1a1a2e] border-l border-t border-[var(--chalk-blue)] transform rotate-45"></div>
-        </div>
+        </>
       )}
     </div>
   );

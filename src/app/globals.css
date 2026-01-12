@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Hide scrollbar but allow scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
 :root {
   /* Pavement/slate background */
   --background: #2d3436;
@@ -131,7 +140,8 @@ body {
   background: transparent;
   border: 2px solid currentColor;
   border-radius: 4px;
-  padding: 0.5rem 1rem;
+  padding: 0.625rem 1rem;
+  min-height: 44px;
   font-family: inherit;
   font-weight: 600;
   cursor: pointer;

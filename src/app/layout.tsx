@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fredoka, Patrick_Hand } from "next/font/google";
 import Link from "next/link";
+import { MobileNav, DesktopNav } from "@/components/mobile-nav";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -28,34 +29,31 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${fredoka.variable} ${patrickHand.variable} antialiased`}>
-        {/* Navigation */}
+        {/* Top Navigation */}
         <nav className="border-b-2 border-dashed border-[var(--chalk-yellow)] bg-[rgba(0,0,0,0.2)]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between h-16">
+            <div className="flex justify-between h-14 md:h-16">
               <div className="flex items-center">
                 <Link
                   href="/"
-                  className="text-2xl font-bold text-[var(--chalk-yellow)] chalk-text hover:text-[var(--chalk-pink)] transition-colors"
+                  className="text-lg md:text-2xl font-bold text-[var(--chalk-yellow)] chalk-text hover:text-[var(--chalk-pink)] transition-colors"
                   style={{ fontFamily: "var(--font-chalk)" }}
                 >
-                  Playoff Best Ball
+                  <span className="md:hidden">PBB</span>
+                  <span className="hidden md:inline">Playoff Best Ball</span>
                 </Link>
               </div>
-              <div className="flex items-center space-x-1">
-                <NavLink href="/">Live</NavLink>
-                <NavLink href="/projections">Projections</NavLink>
-                <NavLink href="/schedule">Schedule</NavLink>
-                <NavLink href="/rosters">Rosters</NavLink>
-                <NavLink href="/scoring">Scoring</NavLink>
-                <NavLink href="/admin">Admin</NavLink>
-              </div>
+              <DesktopNav />
             </div>
           </div>
         </nav>
 
+        {/* Mobile Sub-Header Navigation */}
+        <MobileNav />
+
         {/* Main Content */}
         <main
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8"
+          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8"
           style={{ fontFamily: "var(--font-chalk)" }}
         >
           {children}
@@ -72,17 +70,5 @@ export default function RootLayout({
         </footer>
       </body>
     </html>
-  );
-}
-
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="text-[var(--chalk-white)] hover:text-[var(--chalk-pink)] px-3 py-2 text-sm font-medium transition-colors chalk-text"
-      style={{ fontFamily: "var(--font-chalk)" }}
-    >
-      {children}
-    </Link>
   );
 }

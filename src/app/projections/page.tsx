@@ -225,28 +225,28 @@ export default function ProjectionsPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* View Mode Toggle */}
           <div className="flex rounded-lg overflow-hidden border border-[var(--chalk-border)]">
             <button
               onClick={() => setViewMode("playoffs")}
-              className={`px-3 py-1.5 text-sm transition-colors ${
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm transition-colors min-h-[44px] ${
                 viewMode === "playoffs"
                   ? "bg-[var(--chalk-yellow)] text-black font-semibold"
                   : "bg-[var(--chalk-surface)] text-[var(--chalk-text)] hover:bg-[var(--chalk-border)]"
               }`}
             >
-              Rest of Playoffs
+              <span className="hidden sm:inline">Rest of </span>Playoffs
             </button>
             <button
               onClick={() => setViewMode("week")}
-              className={`px-3 py-1.5 text-sm transition-colors ${
+              className={`px-3 sm:px-4 py-2 text-xs sm:text-sm transition-colors min-h-[44px] ${
                 viewMode === "week"
                   ? "bg-[var(--chalk-yellow)] text-black font-semibold"
                   : "bg-[var(--chalk-surface)] text-[var(--chalk-text)] hover:bg-[var(--chalk-border)]"
               }`}
             >
-              Single Week
+              <span className="hidden sm:inline">Single </span>Week
             </button>
           </div>
 
@@ -254,7 +254,7 @@ export default function ProjectionsPage() {
             <select
               value={selectedWeek}
               onChange={(e) => setSelectedWeek(Number(e.target.value))}
-              className="bg-[var(--chalk-surface)] border border-[var(--chalk-border)] rounded px-3 py-1.5 text-sm text-[var(--chalk-text)]"
+              className="bg-[var(--chalk-surface)] border border-[var(--chalk-border)] rounded px-3 py-2 text-sm text-[var(--chalk-text)] min-h-[44px]"
             >
               {[1, 2, 3, 5].map((week) => (
                 <option key={week} value={week}>
@@ -267,9 +267,9 @@ export default function ProjectionsPage() {
           <button
             onClick={handleSyncAll}
             disabled={syncing}
-            className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:bg-green-800 rounded transition-colors"
+            className="px-4 py-2 text-sm bg-green-600 hover:bg-green-700 disabled:bg-green-800 rounded transition-colors min-h-[44px]"
           >
-            {syncing ? "Syncing..." : "Sync Data"}
+            {syncing ? "..." : "Sync"}
           </button>
         </div>
       </div>
@@ -358,7 +358,65 @@ function PlayoffsView({
           </h2>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          {/* Mobile card view */}
+          <div className="md:hidden space-y-3">
+            {data.projections.map((owner, index) => {
+              const totalEV = owner.actualPoints + owner.totalRemainingEV;
+              return (
+                <div
+                  key={owner.ownerId}
+                  className={`p-3 rounded-lg cursor-pointer ${
+                    index === 0
+                      ? "bg-yellow-900/30 border border-yellow-500/30"
+                      : "bg-[rgba(0,0,0,0.2)] border border-[var(--chalk-muted)]/20"
+                  }`}
+                  onClick={() =>
+                    setExpandedOwner(expandedOwner === owner.ownerId ? null : owner.ownerId)
+                  }
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <RankBadge rank={index + 1} />
+                      <span className="font-semibold text-[var(--chalk-text)]">
+                        {owner.ownerName}
+                      </span>
+                      <span className="text-xs text-[var(--chalk-muted)]">
+                        {expandedOwner === owner.ownerId ? "▼" : "▶"}
+                      </span>
+                    </div>
+                    <span className="text-xl font-bold text-[var(--chalk-green)]">
+                      {totalEV.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-sm">
+                    <div>
+                      <div className="text-xs text-[var(--chalk-muted)]">Actual</div>
+                      <div className="text-[var(--chalk-text)]">
+                        {owner.actualPoints.toFixed(1)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--chalk-muted)]">+EV</div>
+                      <div className="text-[var(--chalk-blue)]">
+                        +{owner.totalRemainingEV.toFixed(1)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--chalk-muted)]">Active</div>
+                      <div>
+                        <span className="text-[var(--chalk-green)]">{owner.activePlayers}</span>
+                        <span className="text-[var(--chalk-muted)]">/</span>
+                        <span className="text-red-400">{owner.eliminatedPlayers}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop table view */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--chalk-border)]">
@@ -681,7 +739,52 @@ function SingleWeekView({ data, odds }: { data: SingleWeekData; odds: OddsData |
           </h2>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          {/* Mobile card view */}
+          <div className="md:hidden space-y-3">
+            {data.projections.map((owner, index) => (
+              <div
+                key={owner.ownerId}
+                className={`p-3 rounded-lg ${
+                  index === 0
+                    ? "bg-yellow-900/30 border border-yellow-500/30"
+                    : "bg-[rgba(0,0,0,0.2)] border border-[var(--chalk-muted)]/20"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <RankBadge rank={index + 1} />
+                    <span className="font-semibold text-[var(--chalk-text)]">
+                      {owner.ownerName}
+                    </span>
+                  </div>
+                  <span className="text-xl font-bold text-[var(--chalk-green)]">
+                    {owner.totalExpectedValue.toFixed(1)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-sm">
+                  <div>
+                    <div className="text-xs text-[var(--chalk-muted)]">Actual</div>
+                    <div className="text-[var(--chalk-text)]">{owner.actualPoints.toFixed(1)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-[var(--chalk-muted)]">Projected</div>
+                    <div className="text-[var(--chalk-blue)]">
+                      {owner.projectedPoints.toFixed(1)}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-[var(--chalk-muted)]">EV</div>
+                    <div className="text-[var(--chalk-muted)]">
+                      {owner.expectedValue.toFixed(1)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Desktop table view */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--chalk-border)]">
