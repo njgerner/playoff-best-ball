@@ -42,7 +42,8 @@ export default function RootLayout({
                 </Link>
               </div>
               <div className="flex items-center space-x-1">
-                <NavLink href="/">Standings</NavLink>
+                <NavLink href="/">Live</NavLink>
+                <NavLink href="/schedule">Schedule</NavLink>
                 <NavLink href="/rosters">Rosters</NavLink>
                 <NavLink href="/scoring">Scoring</NavLink>
                 <NavLink href="/admin">Admin</NavLink>

@@ -4,6 +4,7 @@ import { ScoringBreakdown } from "@/components/scoring-breakdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notFound } from "next/navigation";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+import { getEliminatedTeams } from "@/lib/espn/client";
 
 const WEEK_LABELS: Record<number, string> = {
   1: "Wild Card Round",
@@ -60,8 +61,36 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
   const owner = player.rosters[0]?.owner;
   const badgeClass = positionBadgeClasses[player.position] ?? "chalk-badge-flex";
 
+  // Check if player's team is eliminated
+  const eliminatedTeams = await getEliminatedTeams();
+  const isEliminated = player.team ? eliminatedTeams.has(player.team.toUpperCase()) : false;
+
   return (
     <div className="space-y-6">
+      {/* Elimination Banner */}
+      {isEliminated && (
+        <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-4 flex items-start gap-3">
+          <svg
+            className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <div>
+            <div className="text-red-400 font-bold">Team Eliminated</div>
+            <div className="text-red-300 text-sm">
+              {player.team} has been eliminated from the playoffs. This player will not score any
+              additional points this season.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
@@ -71,13 +100,24 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
           >
             &larr; Back to Rosters
           </Link>
-          <h1 className="text-3xl font-bold text-[var(--chalk-yellow)] chalk-text">
+          <h1
+            className={`text-3xl font-bold chalk-text ${isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-yellow)]"}`}
+          >
             {player.name}
           </h1>
           <div className="flex items-center gap-3 mt-2">
-            <span className={`chalk-badge ${badgeClass}`}>{player.position}</span>
+            <span className={`chalk-badge ${badgeClass} ${isEliminated ? "opacity-50" : ""}`}>
+              {player.position}
+            </span>
             {player.team && (
-              <span className="text-sm text-[var(--chalk-muted)]">{player.team}</span>
+              <span
+                className={`text-sm ${isEliminated ? "text-red-400" : "text-[var(--chalk-muted)]"}`}
+              >
+                {player.team}
+                {isEliminated && (
+                  <span className="ml-2 text-xs bg-red-900/50 px-1.5 py-0.5 rounded">OUT</span>
+                )}
+              </span>
             )}
             {owner && (
               <span className="text-sm text-[var(--chalk-muted)]">
@@ -88,9 +128,12 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
         </div>
         <div className="text-right">
           <div className="text-sm text-[var(--chalk-muted)]">Total Points</div>
-          <div className="text-4xl font-bold text-[var(--chalk-green)] chalk-score">
+          <div
+            className={`text-4xl font-bold chalk-score ${isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-green)]"}`}
+          >
             {totalPoints.toFixed(1)}
           </div>
+          {isEliminated && <div className="text-xs text-red-400 mt-1">Final</div>}
         </div>
       </div>
 

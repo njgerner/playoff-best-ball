@@ -8,6 +8,7 @@ interface RosterPlayer {
   name: string;
   points: number;
   playerId?: string;
+  team?: string | null;
   weeklyPoints?: { week: number; points: number }[];
 }
 
@@ -17,6 +18,8 @@ interface RosterCardProps {
   totalPoints: number;
   rank?: number;
   compact?: boolean;
+  eliminatedTeams?: string[];
+  activePlayers?: number;
 }
 
 const rankColors = [
@@ -31,6 +34,8 @@ export function RosterCard({
   totalPoints,
   rank,
   compact = false,
+  eliminatedTeams = [],
+  activePlayers,
 }: RosterCardProps) {
   const slotOrder = ["QB", "RB1", "RB2", "WR1", "WR2", "TE", "FLEX", "K", "DST"];
   const sortedRoster = [...roster].sort(
@@ -45,11 +50,16 @@ export function RosterCard({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {rank && <span className={`chalk-rank ${rankClass}`}>{rank}</span>}
-            <h3
-              className={`font-bold text-[var(--chalk-yellow)] chalk-text ${compact ? "text-lg" : "text-xl"}`}
-            >
-              {ownerName}
-            </h3>
+            <div>
+              <h3
+                className={`font-bold text-[var(--chalk-yellow)] chalk-text ${compact ? "text-lg" : "text-xl"}`}
+              >
+                {ownerName}
+              </h3>
+              {activePlayers !== undefined && (
+                <div className="text-xs text-[var(--chalk-muted)]">{activePlayers}/9 active</div>
+              )}
+            </div>
           </div>
           <span className="text-2xl font-bold text-[var(--chalk-green)] chalk-score">
             {totalPoints.toFixed(1)}
@@ -58,16 +68,22 @@ export function RosterCard({
       </CardHeader>
       <CardContent className={compact ? "pt-0" : ""}>
         <div className="space-y-0.5">
-          {sortedRoster.map((player) => (
-            <PlayerRow
-              key={player.slot}
-              slot={player.slot}
-              name={player.name}
-              points={player.points}
-              playerId={player.playerId}
-              compact={compact}
-            />
-          ))}
+          {sortedRoster.map((player) => {
+            const isEliminated = player.team
+              ? eliminatedTeams.includes(player.team.toUpperCase())
+              : false;
+            return (
+              <PlayerRow
+                key={player.slot}
+                slot={player.slot}
+                name={player.name}
+                points={player.points}
+                playerId={player.playerId}
+                compact={compact}
+                isEliminated={isEliminated}
+              />
+            );
+          })}
         </div>
       </CardContent>
     </Card>
