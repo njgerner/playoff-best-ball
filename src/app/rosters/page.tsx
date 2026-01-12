@@ -168,14 +168,28 @@ export default async function RostersPage() {
   // Calculate totals and active players, sort by total points
   const rostersWithTotals = rosters
     .map((r) => {
-      const activePlayers = r.roster.filter((p) => {
+      let activePlayers = 0;
+      let unknownPlayers = 0;
+      let eliminatedPlayers = 0;
+
+      for (const p of r.roster) {
         const team = "team" in p ? (p.team as string | null | undefined) : null;
-        return !team || !eliminatedTeams.has(team.toUpperCase());
-      }).length;
+        if (!team) {
+          unknownPlayers++;
+          activePlayers++; // Count unknown as active for now
+        } else if (eliminatedTeams.has(team.toUpperCase())) {
+          eliminatedPlayers++;
+        } else {
+          activePlayers++;
+        }
+      }
+
       return {
         ...r,
         totalPoints: r.roster.reduce((sum, p) => sum + p.points, 0),
         activePlayers,
+        unknownPlayers,
+        eliminatedPlayers,
       };
     })
     .sort((a, b) => b.totalPoints - a.totalPoints);
@@ -210,6 +224,7 @@ export default async function RostersPage() {
             compact={true}
             eliminatedTeams={eliminatedArray}
             activePlayers={roster.activePlayers}
+            unknownPlayers={roster.unknownPlayers}
           />
         ))}
       </div>

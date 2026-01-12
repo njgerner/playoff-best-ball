@@ -9,6 +9,7 @@ interface PlayerRowProps {
   playerId?: string;
   compact?: boolean;
   isEliminated?: boolean;
+  teamUnknown?: boolean;
 }
 
 const slotClasses: Record<string, string> = {
@@ -30,6 +31,7 @@ export function PlayerRow({
   playerId,
   compact = false,
   isEliminated = false,
+  teamUnknown = false,
 }: PlayerRowProps) {
   const badgeClass = slotClasses[slot] ?? "chalk-badge-flex";
   const displaySlot = slot.replace(/[0-9]/g, "");
@@ -57,6 +59,14 @@ export function PlayerRow({
         </span>
         {isEliminated && (
           <span className="text-[8px] text-red-400 bg-red-900/30 px-1 py-0.5 rounded">OUT</span>
+        )}
+        {teamUnknown && !isEliminated && (
+          <span
+            className="text-[8px] text-yellow-400 bg-yellow-900/30 px-1 py-0.5 rounded"
+            title="Team status unknown"
+          >
+            ?
+          </span>
         )}
       </div>
       <div className="flex items-center gap-1">
@@ -90,6 +100,14 @@ export function PlayerRow({
           </span>
           {isEliminated && (
             <span className="text-[8px] text-red-400 bg-red-900/30 px-1 py-0.5 rounded">OUT</span>
+          )}
+          {teamUnknown && !isEliminated && (
+            <span
+              className="text-[8px] text-yellow-400 bg-yellow-900/30 px-1 py-0.5 rounded"
+              title="Team status unknown"
+            >
+              ?
+            </span>
           )}
         </div>
         <div className="flex items-center gap-2">

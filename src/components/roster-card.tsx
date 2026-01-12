@@ -20,6 +20,7 @@ interface RosterCardProps {
   compact?: boolean;
   eliminatedTeams?: string[];
   activePlayers?: number;
+  unknownPlayers?: number;
 }
 
 const rankColors = [
@@ -36,6 +37,7 @@ export function RosterCard({
   compact = false,
   eliminatedTeams = [],
   activePlayers,
+  unknownPlayers = 0,
 }: RosterCardProps) {
   const slotOrder = ["QB", "RB1", "RB2", "WR1", "WR2", "TE", "FLEX", "K", "DST"];
   const sortedRoster = [...roster].sort(
@@ -57,7 +59,12 @@ export function RosterCard({
                 {ownerName}
               </h3>
               {activePlayers !== undefined && (
-                <div className="text-xs text-[var(--chalk-muted)]">{activePlayers}/9 active</div>
+                <div className="text-xs text-[var(--chalk-muted)]">
+                  {activePlayers}/9 active
+                  {unknownPlayers > 0 && (
+                    <span className="text-yellow-400 ml-1">({unknownPlayers}?)</span>
+                  )}
+                </div>
               )}
             </div>
           </div>
@@ -69,8 +76,9 @@ export function RosterCard({
       <CardContent className={compact ? "pt-0" : ""}>
         <div className="space-y-0.5">
           {sortedRoster.map((player) => {
-            const isEliminated = player.team
-              ? eliminatedTeams.includes(player.team.toUpperCase())
+            const hasTeam = player.team != null && player.team !== "";
+            const isEliminated = hasTeam
+              ? eliminatedTeams.includes(player.team!.toUpperCase())
               : false;
             return (
               <PlayerRow
@@ -81,6 +89,7 @@ export function RosterCard({
                 playerId={player.playerId}
                 compact={compact}
                 isEliminated={isEliminated}
+                teamUnknown={!hasTeam}
               />
             );
           })}

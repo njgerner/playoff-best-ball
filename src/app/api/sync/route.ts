@@ -111,6 +111,15 @@ export async function POST(request: Request) {
           log(`  MATCHED: ${player.name} -> DB: ${matchedDbPlayer.name} (${matchedDbPlayer.id})`);
 
           try {
+            // Update player team if we have it from ESPN
+            if (player.team && player.team !== matchedDbPlayer.team) {
+              await prisma.player.update({
+                where: { id: matchedDbPlayer.id },
+                data: { team: player.team },
+              });
+              log(`    Updated team: ${player.team}`);
+            }
+
             // Upsert score for this week
             await prisma.playerScore.upsert({
               where: {
@@ -170,6 +179,15 @@ export async function POST(request: Request) {
           );
 
           try {
+            // Update DST team abbreviation if we have it
+            if (defense.abbreviation && defense.abbreviation !== matchedDbPlayer.team) {
+              await prisma.player.update({
+                where: { id: matchedDbPlayer.id },
+                data: { team: defense.abbreviation },
+              });
+              log(`    Updated DST team: ${defense.abbreviation}`);
+            }
+
             await prisma.playerScore.upsert({
               where: {
                 playerId_week_year: {
