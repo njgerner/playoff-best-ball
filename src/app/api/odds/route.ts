@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+import { CURRENT_SEASON_YEAR, BYE_TEAMS_2025 } from "@/lib/constants";
 import { fetchNFLOdds } from "@/lib/odds/client";
 
 export const dynamic = "force-dynamic";
@@ -20,13 +20,21 @@ export async function GET(request: Request) {
       where.week = week;
     }
 
-    const odds = await prisma.teamOdds.findMany({
+    let odds = await prisma.teamOdds.findMany({
       where,
       orderBy: [{ week: "asc" }, { team: "asc" }],
     });
 
+    // Filter out bye teams for Wild Card (bye teams don't play Wild Card)
+    // Also filter out games where the opponent is a bye team
+    const byeTeams = new Set(BYE_TEAMS_2025);
+    if (week === 1) {
+      odds = odds.filter((o) => !byeTeams.has(o.team) && !byeTeams.has(o.opponent));
+    }
+
     return NextResponse.json({
       odds,
+      byeTeams: week === 1 ? Array.from(byeTeams) : [],
       lastUpdated: odds.length > 0 ? odds[0].updatedAt : null,
     });
   } catch (error) {

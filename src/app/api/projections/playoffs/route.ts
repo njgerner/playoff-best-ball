@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
-import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+import { CURRENT_SEASON_YEAR, BYE_TEAMS_2025 } from "@/lib/constants";
 import { getEliminatedTeams } from "@/lib/espn/client";
 
 export const dynamic = "force-dynamic";
@@ -52,20 +52,60 @@ export async function GET(request: Request) {
 
     // Get eliminated teams
     const eliminatedTeams = await getEliminatedTeams();
+    const eliminatedCount = eliminatedTeams.size;
 
-    // Determine current/completed weeks based on scores
-    const scoresWithWeeks = await prisma.playerScore.findMany({
-      where: { year },
-      select: { week: true },
-      distinct: ["week"],
-    });
-    const completedWeeks = scoresWithWeeks.map((s) => s.week);
-    const remainingWeeks = PLAYOFF_WEEKS.filter((w) => !completedWeeks.includes(w));
-    const currentWeek = remainingWeeks.length > 0 ? remainingWeeks[0] : 5;
+    // Determine current week based on how many teams are eliminated
+    // NFL Playoffs: 14 teams start, eliminate 6 in WC, 4 in Div, 2 in Conf, 1 in SB
+    // After Wild Card: 6 eliminated (8 remain)
+    // After Divisional: 10 eliminated (4 remain)
+    // After Conference: 12 eliminated (2 remain)
+    // After Super Bowl: 13 eliminated (1 remains)
+    let currentWeek: number;
+    let completedWeeks: number[];
+    let remainingWeeks: number[];
+
+    if (eliminatedCount < 6) {
+      // Wild Card not complete
+      currentWeek = 1;
+      completedWeeks = [];
+      remainingWeeks = [1, 2, 3, 5];
+    } else if (eliminatedCount < 10) {
+      // Wild Card complete, Divisional in progress or upcoming
+      currentWeek = 2;
+      completedWeeks = [1];
+      remainingWeeks = [2, 3, 5];
+    } else if (eliminatedCount < 12) {
+      // Divisional complete, Conference in progress or upcoming
+      currentWeek = 3;
+      completedWeeks = [1, 2];
+      remainingWeeks = [3, 5];
+    } else if (eliminatedCount < 13) {
+      // Conference complete, Super Bowl upcoming
+      currentWeek = 5;
+      completedWeeks = [1, 2, 3];
+      remainingWeeks = [5];
+    } else {
+      // Playoffs complete
+      currentWeek = 5;
+      completedWeeks = [1, 2, 3, 5];
+      remainingWeeks = [];
+    }
+
+    // Allow manual override via query param
+    const weekOverride = url.searchParams.get("currentWeek");
+    if (weekOverride) {
+      const overrideWeek = parseInt(weekOverride);
+      if (PLAYOFF_WEEKS.includes(overrideWeek)) {
+        currentWeek = overrideWeek;
+        const weekIndex = PLAYOFF_WEEKS.indexOf(overrideWeek);
+        completedWeeks = PLAYOFF_WEEKS.slice(0, weekIndex);
+        remainingWeeks = PLAYOFF_WEEKS.slice(weekIndex);
+      }
+    }
 
     // Get all team odds for remaining weeks
     const allOdds = await prisma.teamOdds.findMany({
-      where: { year, week: { in: remainingWeeks } },
+      where: { year, week: { in: remainingWeeks.length > 0 ? remainingWeeks : [currentWeek] } },
     });
 
     // Build odds map: team -> week -> winProb
@@ -76,6 +116,10 @@ export async function GET(request: Request) {
       }
       oddsMap.get(odd.team)!.set(odd.week, odd.winProb);
     }
+
+    // Bye teams: teams that skip Wild Card (first-round bye)
+    // Use the configured bye teams for the current season
+    const byeTeams = new Set(BYE_TEAMS_2025);
 
     // Get all owners with rosters, scores, and projections
     const owners = await prisma.owner.findMany({
@@ -137,8 +181,23 @@ export async function GET(request: Request) {
 
         if (!isEliminated && playerTeam) {
           const teamOdds = oddsMap.get(playerTeam);
+          const hasBye = byeTeams.has(playerTeam);
 
           for (const week of remainingWeeks) {
+            // Handle bye teams: they don't play Wild Card
+            if (week === 1 && hasBye) {
+              // Bye team in Wild Card: automatically advances, no game played
+              weeklyBreakdown.push({
+                week,
+                weekName: weekNames[week] + " (BYE)",
+                projectedPoints: 0,
+                advanceProb: 1.0, // Automatic advance
+                expectedValue: 0, // No game, no points
+              });
+              // cumulativeAdvanceProb stays at 1.0
+              continue;
+            }
+
             // Get win probability for this week
             // If no odds, estimate based on remaining teams (assume equal chance)
             const weekWinProb = teamOdds?.get(week) ?? 0.5;
@@ -212,6 +271,10 @@ export async function GET(request: Request) {
       remainingWeeks,
       currentWeek,
       year,
+      eliminatedTeams: Array.from(eliminatedTeams),
+      eliminatedCount,
+      byeTeams: Array.from(byeTeams),
+      oddsCount: allOdds.length,
       lastUpdated: new Date().toISOString(),
     });
   } catch (error) {

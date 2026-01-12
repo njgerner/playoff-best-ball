@@ -46,6 +46,10 @@ interface PlayoffsData {
   currentWeek: number;
   year: number;
   lastUpdated: string;
+  eliminatedTeams?: string[];
+  eliminatedCount?: number;
+  byeTeams?: string[];
+  oddsCount?: number;
 }
 
 // Types for Single Week view
@@ -60,6 +64,8 @@ interface SingleWeekPlayer {
   teamWinProb: number | null;
   expectedValue: number | null;
   opponent: string | null;
+  isEliminated?: boolean;
+  isByeWeek?: boolean;
 }
 
 interface SingleWeekOwner {
@@ -76,6 +82,8 @@ interface SingleWeekData {
   projections: SingleWeekOwner[];
   week: number | null;
   year: number;
+  byeTeams?: string[];
+  eliminatedTeams?: string[];
   lastUpdated: string;
 }
 
@@ -103,7 +111,7 @@ export default function ProjectionsPage() {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedWeek, setSelectedWeek] = useState(2);
+  const [selectedWeek, setSelectedWeek] = useState(1); // Default to Wild Card
   const [expandedOwner, setExpandedOwner] = useState<string | null>(null);
 
   const fetchPlayoffsData = useCallback(async () => {
@@ -158,18 +166,27 @@ export default function ProjectionsPage() {
   const handleSyncAll = async () => {
     try {
       setSyncing(true);
-      // Sync odds for current week
-      await fetch(`/api/odds?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`, {
-        method: "POST",
-      });
-      // Sync projections
-      await fetch(`/api/projections/sync?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`, {
-        method: "POST",
-      });
-      // Refresh data
+
       if (viewMode === "playoffs") {
+        // For playoffs view, sync odds for current week (determined by API)
+        // The Odds API only returns upcoming games, so we sync to week 1 (Wild Card)
+        const currentWeek = playoffsData?.currentWeek || 1;
+        await fetch(`/api/odds?year=${CURRENT_SEASON_YEAR}&week=${currentWeek}`, {
+          method: "POST",
+        });
+        // Sync projections for current week
+        await fetch(`/api/projections/sync?year=${CURRENT_SEASON_YEAR}&week=${currentWeek}`, {
+          method: "POST",
+        });
         await fetchPlayoffsData();
       } else {
+        // For single week view, sync for selected week
+        await fetch(`/api/odds?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`, {
+          method: "POST",
+        });
+        await fetch(`/api/projections/sync?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`, {
+          method: "POST",
+        });
         await fetchWeekData();
       }
     } catch (err) {
@@ -260,7 +277,6 @@ export default function ProjectionsPage() {
       {viewMode === "playoffs" && playoffsData && (
         <PlayoffsView
           data={playoffsData}
-          odds={odds}
           expandedOwner={expandedOwner}
           setExpandedOwner={setExpandedOwner}
         />
@@ -274,12 +290,10 @@ export default function ProjectionsPage() {
 // Rest of Playoffs View Component
 function PlayoffsView({
   data,
-  odds,
   expandedOwner,
   setExpandedOwner,
 }: {
   data: PlayoffsData;
-  odds: OddsData | null;
   expandedOwner: string | null;
   setExpandedOwner: (id: string | null) => void;
 }) {
@@ -288,17 +302,52 @@ function PlayoffsView({
       {/* Playoff Status */}
       <div className="flex flex-wrap gap-2 text-sm">
         <span className="text-[var(--chalk-muted)]">Completed:</span>
-        {data.completedWeeks.map((w) => (
-          <span key={w} className="px-2 py-0.5 bg-green-900/30 text-green-400 rounded">
-            {weekNames[w]}
-          </span>
-        ))}
+        {data.completedWeeks.length === 0 ? (
+          <span className="px-2 py-0.5 bg-gray-800 text-gray-400 rounded">None</span>
+        ) : (
+          data.completedWeeks.map((w) => (
+            <span key={w} className="px-2 py-0.5 bg-green-900/30 text-green-400 rounded">
+              {weekNames[w]}
+            </span>
+          ))
+        )}
         <span className="text-[var(--chalk-muted)] ml-2">Remaining:</span>
         {data.remainingWeeks.map((w) => (
           <span key={w} className="px-2 py-0.5 bg-blue-900/30 text-blue-400 rounded">
             {weekNames[w]}
           </span>
         ))}
+      </div>
+
+      {/* Debug Info */}
+      <div className="flex flex-wrap gap-4 text-xs bg-[var(--chalk-surface)] p-2 rounded">
+        <span>
+          <span className="text-[var(--chalk-muted)]">Eliminated:</span>{" "}
+          <span className="text-red-400">{data.eliminatedCount ?? "?"}</span>
+          {data.eliminatedTeams && data.eliminatedTeams.length > 0 && (
+            <span className="text-[var(--chalk-muted)] ml-1">
+              ({data.eliminatedTeams.join(", ")})
+            </span>
+          )}
+        </span>
+        {data.byeTeams && data.byeTeams.length > 0 && (
+          <span>
+            <span className="text-[var(--chalk-muted)]">Bye Teams:</span>{" "}
+            <span className="text-purple-400">{data.byeTeams.join(", ")}</span>
+          </span>
+        )}
+        <span>
+          <span className="text-[var(--chalk-muted)]">Odds in DB:</span>{" "}
+          <span
+            className={data.oddsCount && data.oddsCount > 0 ? "text-green-400" : "text-yellow-400"}
+          >
+            {data.oddsCount ?? "0"}
+          </span>
+        </span>
+        <span>
+          <span className="text-[var(--chalk-muted)]">Year:</span>{" "}
+          <span className="text-[var(--chalk-text)]">{data.year}</span>
+        </span>
       </div>
 
       {/* Main Leaderboard */}
@@ -377,12 +426,7 @@ function PlayoffsView({
       {/* All Owner Cards */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {data.projections.map((owner, rank) => (
-          <OwnerPlayoffCard
-            key={owner.ownerId}
-            owner={owner}
-            rank={rank}
-            remainingWeeks={data.remainingWeeks}
-          />
+          <OwnerPlayoffCard key={owner.ownerId} owner={owner} rank={rank} />
         ))}
       </div>
     </>
@@ -390,15 +434,7 @@ function PlayoffsView({
 }
 
 // Owner Playoff Card Component
-function OwnerPlayoffCard({
-  owner,
-  rank,
-  remainingWeeks,
-}: {
-  owner: OwnerPlayoffProjection;
-  rank: number;
-  remainingWeeks: number[];
-}) {
+function OwnerPlayoffCard({ owner, rank }: { owner: OwnerPlayoffProjection; rank: number }) {
   const totalEV = owner.actualPoints + owner.totalRemainingEV;
 
   return (
@@ -571,8 +607,27 @@ function OwnerPlayoffDetails({
 
 // Single Week View Component (Original)
 function SingleWeekView({ data, odds }: { data: SingleWeekData; odds: OddsData | null }) {
+  const isWildCard = data.week === 1;
+
   return (
     <>
+      {/* Week Info */}
+      {data.byeTeams && data.byeTeams.length > 0 && isWildCard && (
+        <div className="flex flex-wrap gap-4 text-xs bg-[var(--chalk-surface)] p-2 rounded">
+          <span>
+            <span className="text-[var(--chalk-muted)]">Bye Teams:</span>{" "}
+            <span className="text-purple-400">{data.byeTeams.join(", ")}</span>
+            <span className="text-[var(--chalk-muted)] ml-1">(skip Wild Card)</span>
+          </span>
+          {data.eliminatedTeams && data.eliminatedTeams.length > 0 && (
+            <span>
+              <span className="text-[var(--chalk-muted)]">Eliminated:</span>{" "}
+              <span className="text-red-400">{data.eliminatedTeams.join(", ")}</span>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Team Odds Summary */}
       {odds && odds.odds.length > 0 && (
         <Card>
@@ -695,7 +750,9 @@ function SingleWeekView({ data, odds }: { data: SingleWeekData; odds: OddsData |
                 {owner.players.map((player) => (
                   <div
                     key={player.id}
-                    className="flex items-center justify-between py-1 px-2 rounded hover:bg-[var(--chalk-surface)]"
+                    className={`flex items-center justify-between py-1 px-2 rounded hover:bg-[var(--chalk-surface)] ${
+                      player.isEliminated ? "opacity-50" : ""
+                    }`}
                   >
                     <div className="flex items-center gap-2">
                       <span className="w-8 text-xs font-medium text-[var(--chalk-muted)]">
@@ -707,13 +764,35 @@ function SingleWeekView({ data, odds }: { data: SingleWeekData; odds: OddsData |
                       >
                         {player.name}
                       </Link>
+                      {player.isEliminated && (
+                        <span className="text-xs text-red-400 px-1 py-0.5 bg-red-900/30 rounded">
+                          OUT
+                        </span>
+                      )}
+                      {player.isByeWeek && (
+                        <span className="text-xs text-purple-400 px-1 py-0.5 bg-purple-900/30 rounded">
+                          BYE
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-sm">
                       <span className="text-[var(--chalk-text)] w-12 text-right">
                         {player.actualPoints.toFixed(1)}
                       </span>
-                      <span className="text-[var(--chalk-green)] w-12 text-right font-medium">
-                        {player.expectedValue !== null ? player.expectedValue.toFixed(1) : "-"}
+                      <span
+                        className={`w-12 text-right font-medium ${
+                          player.isByeWeek
+                            ? "text-purple-400"
+                            : player.expectedValue !== null
+                              ? "text-[var(--chalk-green)]"
+                              : "text-[var(--chalk-muted)]"
+                        }`}
+                      >
+                        {player.isByeWeek
+                          ? "BYE"
+                          : player.expectedValue !== null
+                            ? player.expectedValue.toFixed(1)
+                            : "-"}
                       </span>
                     </div>
                   </div>
