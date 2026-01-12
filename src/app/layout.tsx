@@ -43,6 +43,7 @@ export default function RootLayout({
               </div>
               <div className="flex items-center space-x-1">
                 <NavLink href="/">Live</NavLink>
+                <NavLink href="/projections">Projections</NavLink>
                 <NavLink href="/schedule">Schedule</NavLink>
                 <NavLink href="/rosters">Rosters</NavLink>
                 <NavLink href="/scoring">Scoring</NavLink>

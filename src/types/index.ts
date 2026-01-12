@@ -226,3 +226,58 @@ export interface PlayoffGame {
   awayTeam: GameTeam;
   players: GamePlayer[];
 }
+
+// Projection Types
+export interface ProjectedStats {
+  passYards?: number;
+  passTd?: number;
+  passInt?: number;
+  rushYards?: number;
+  rushTd?: number;
+  recYards?: number;
+  recTd?: number;
+  receptions?: number;
+  fgMade?: number;
+  xpMade?: number;
+  // Defense projections are harder, so we just project total points
+  dstPoints?: number;
+}
+
+export interface ProjectionResult {
+  projectedPoints: number;
+  confidence: "high" | "medium" | "low";
+  basis: "playoff_avg" | "position_avg" | "manual";
+  gamesPlayed: number;
+  breakdown?: ProjectedStats;
+}
+
+export interface TeamOddsData {
+  team: string;
+  opponent: string;
+  winProb: number;
+  moneyline?: number;
+  gameTime?: Date;
+}
+
+export interface PlayerProjectionData {
+  playerId: string;
+  playerName: string;
+  position: Position;
+  team: string | null;
+  week: number;
+  projectedPoints: number;
+  teamWinProb: number | null;
+  expectedValue: number | null;
+  confidence: "high" | "medium" | "low";
+  basis: "playoff_avg" | "position_avg" | "manual";
+}
+
+export interface OwnerProjectionSummary {
+  ownerId: string;
+  ownerName: string;
+  actualPoints: number;
+  projectedRemainingPoints: number;
+  expectedRemainingValue: number;
+  totalExpectedValue: number;
+  players: PlayerProjectionData[];
+}
