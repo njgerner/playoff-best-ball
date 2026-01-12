@@ -59,72 +59,208 @@ function GameStatusBadge({ status }: { status: PlayoffGame["status"] }) {
   );
 }
 
+// Build fantasy-relevant stat chips
+function StatChip({
+  label,
+  value,
+  points,
+  isNegative,
+}: {
+  label: string;
+  value: string;
+  points?: number;
+  isNegative?: boolean;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs ${
+        isNegative
+          ? "bg-red-900/30 text-red-400"
+          : points && points > 0
+            ? "bg-green-900/30 text-green-400"
+            : "bg-[rgba(255,255,255,0.1)] text-[var(--chalk-muted)]"
+      }`}
+    >
+      <span className="font-medium">{value}</span>
+      <span className="opacity-70">{label}</span>
+      {points !== undefined && (
+        <span className="font-bold">
+          {points >= 0 ? "+" : ""}
+          {points.toFixed(1)}
+        </span>
+      )}
+    </span>
+  );
+}
+
 function PlayerStatLine({ player }: { player: GamePlayer }) {
   const posColor = POSITION_COLORS[player.position] || "text-[var(--chalk-white)]";
 
-  // Build stat summary
-  const statParts: string[] = [];
+  // Build fantasy stat chips with point values
+  const statChips: React.ReactNode[] = [];
+
+  // Passing stats
   if (player.stats.passYards) {
-    const passTd = player.stats.passTd || 0;
-    const passInt = player.stats.passInt || 0;
-    statParts.push(
-      `${player.stats.passYards} pass yds${passTd ? `, ${passTd} TD` : ""}${passInt ? `, ${passInt} INT` : ""}`
+    const pts = player.stats.passYards / 30; // 30 yards per point
+    statChips.push(
+      <StatChip
+        key="passYds"
+        label="pass yds"
+        value={String(player.stats.passYards)}
+        points={pts}
+      />
     );
   }
-  if (player.stats.rushYards) {
-    const rushTd = player.stats.rushTd || 0;
-    statParts.push(`${player.stats.rushYards} rush yds${rushTd ? `, ${rushTd} TD` : ""}`);
+  if (player.stats.passTd) {
+    const pts = player.stats.passTd * 6;
+    statChips.push(
+      <StatChip key="passTd" label="TD" value={String(player.stats.passTd)} points={pts} />
+    );
   }
-  if (player.stats.receptions || player.stats.recYards) {
-    const rec = player.stats.receptions || 0;
-    const yards = player.stats.recYards || 0;
-    const recTd = player.stats.recTd || 0;
-    statParts.push(`${rec} rec, ${yards} yds${recTd ? `, ${recTd} TD` : ""}`);
+  if (player.stats.passInt) {
+    const pts = player.stats.passInt * -2;
+    statChips.push(
+      <StatChip
+        key="passInt"
+        label="INT"
+        value={String(player.stats.passInt)}
+        points={pts}
+        isNegative
+      />
+    );
   }
 
-  const statSummary = statParts.join(" | ") || "No stats yet";
+  // Rushing stats
+  if (player.stats.rushYards) {
+    const pts = player.stats.rushYards / 10; // 10 yards per point
+    statChips.push(
+      <StatChip
+        key="rushYds"
+        label="rush yds"
+        value={String(player.stats.rushYards)}
+        points={pts}
+      />
+    );
+  }
+  if (player.stats.rushTd) {
+    const pts = player.stats.rushTd * 6;
+    statChips.push(
+      <StatChip key="rushTd" label="TD" value={String(player.stats.rushTd)} points={pts} />
+    );
+  }
+
+  // Receiving stats
+  if (player.stats.receptions) {
+    const pts = player.stats.receptions * 0.5; // Half PPR
+    statChips.push(
+      <StatChip key="rec" label="rec" value={String(player.stats.receptions)} points={pts} />
+    );
+  }
+  if (player.stats.recYards) {
+    const pts = player.stats.recYards / 10; // 10 yards per point
+    statChips.push(
+      <StatChip key="recYds" label="rec yds" value={String(player.stats.recYards)} points={pts} />
+    );
+  }
+  if (player.stats.recTd) {
+    const pts = player.stats.recTd * 6;
+    statChips.push(
+      <StatChip key="recTd" label="TD" value={String(player.stats.recTd)} points={pts} />
+    );
+  }
+
+  // Fumbles
+  if (player.stats.fumblesLost) {
+    const pts = player.stats.fumblesLost * -2;
+    statChips.push(
+      <StatChip
+        key="fumble"
+        label="fumble"
+        value={String(player.stats.fumblesLost)}
+        points={pts}
+        isNegative
+      />
+    );
+  }
 
   return (
     <Link
       href={`/player/${player.playerId}`}
-      className={`block p-2 rounded hover:bg-[rgba(255,255,255,0.05)] transition-colors ${
-        player.isEliminated ? "opacity-50" : ""
+      className={`block p-3 rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors border ${
+        player.isEliminated
+          ? "border-red-900/30 bg-red-900/10"
+          : "border-transparent bg-[rgba(0,0,0,0.2)]"
       }`}
     >
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className={`text-xs font-mono w-8 ${posColor}`}>{player.position}</span>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-[var(--chalk-white)] truncate">
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2 min-w-0">
+          <span
+            className={`text-xs font-mono w-8 pt-0.5 ${player.isEliminated ? "text-red-400/50" : posColor}`}
+          >
+            {player.position}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span
+                className={`text-sm font-medium truncate ${
+                  player.isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-white)]"
+                }`}
+              >
                 {player.playerName}
               </span>
-              {player.isEliminated && (
-                <span className="text-xs text-red-400 px-1 py-0.5 bg-red-900/30 rounded">OUT</span>
-              )}
+              <span className="text-xs text-[var(--chalk-muted)]">({player.ownerName})</span>
             </div>
-            <div className="text-xs text-[var(--chalk-muted)]">{player.ownerName}</div>
+
+            {/* Eliminated banner */}
+            {player.isEliminated && (
+              <div className="mt-1 text-xs text-red-400 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                <span>Eliminated - No more points possible</span>
+              </div>
+            )}
+
+            {/* Stats chips */}
+            {statChips.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{statChips}</div>}
+            {statChips.length === 0 && !player.isEliminated && (
+              <div className="mt-1 text-xs text-[var(--chalk-muted)]">No stats yet</div>
+            )}
           </div>
         </div>
-        <div className="text-right flex-shrink-0 ml-2">
+
+        {/* Total points */}
+        <div className="text-right flex-shrink-0">
           <div
-            className={`text-sm font-bold ${
-              player.points > 0 ? "text-[var(--chalk-green)]" : "text-[var(--chalk-muted)]"
+            className={`text-lg font-bold ${
+              player.isEliminated
+                ? "text-[var(--chalk-muted)]"
+                : player.points > 0
+                  ? "text-[var(--chalk-green)]"
+                  : "text-[var(--chalk-muted)]"
             }`}
           >
-            {player.points.toFixed(1)} pts
+            {player.points.toFixed(1)}
           </div>
+          <div className="text-xs text-[var(--chalk-muted)]">pts</div>
         </div>
       </div>
-      <div className="mt-1 text-xs text-[var(--chalk-muted)] truncate pl-10">{statSummary}</div>
     </Link>
   );
 }
 
-function GameCard({ game }: { game: PlayoffGame }) {
+function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeams: string[] }) {
   const awayWinning = game.awayTeam.score > game.homeTeam.score;
   const homeWinning = game.homeTeam.score > game.awayTeam.score;
   const isLive = game.status.state === "in";
+
+  // Check if teams are eliminated
+  const awayEliminated = eliminatedTeams.includes(game.awayTeam.abbreviation.toUpperCase());
+  const homeEliminated = eliminatedTeams.includes(game.homeTeam.abbreviation.toUpperCase());
 
   // Group players by team
   const awayPlayers = game.players.filter(
@@ -133,6 +269,10 @@ function GameCard({ game }: { game: PlayoffGame }) {
   const homePlayers = game.players.filter(
     (p) => p.team.toUpperCase() === game.homeTeam.abbreviation.toUpperCase()
   );
+
+  // Calculate team fantasy points
+  const awayFantasyPts = awayPlayers.reduce((sum, p) => sum + p.points, 0);
+  const homeFantasyPts = homePlayers.reduce((sum, p) => sum + p.points, 0);
 
   return (
     <div className="chalk-box overflow-hidden">
@@ -152,16 +292,25 @@ function GameCard({ game }: { game: PlayoffGame }) {
             <div className="text-center">
               <div
                 className={`text-lg font-bold ${
-                  awayWinning ? "text-[var(--chalk-white)]" : "text-[var(--chalk-muted)]"
+                  awayEliminated
+                    ? "text-red-400/50"
+                    : awayWinning
+                      ? "text-[var(--chalk-white)]"
+                      : "text-[var(--chalk-muted)]"
                 }`}
               >
                 {game.awayTeam.abbreviation}
+                {awayEliminated && <span className="ml-1 text-xs text-red-400">OUT</span>}
               </div>
               <div className="text-xs text-[var(--chalk-muted)]">{game.awayTeam.displayName}</div>
             </div>
             <div
               className={`text-3xl font-bold chalk-score ${
-                awayWinning ? "text-[var(--chalk-green)]" : "text-[var(--chalk-white)]"
+                awayEliminated
+                  ? "text-[var(--chalk-muted)]"
+                  : awayWinning
+                    ? "text-[var(--chalk-green)]"
+                    : "text-[var(--chalk-white)]"
               }`}
             >
               {game.awayTeam.score}
@@ -186,7 +335,11 @@ function GameCard({ game }: { game: PlayoffGame }) {
           <div className="flex items-center gap-3">
             <div
               className={`text-3xl font-bold chalk-score ${
-                homeWinning ? "text-[var(--chalk-green)]" : "text-[var(--chalk-white)]"
+                homeEliminated
+                  ? "text-[var(--chalk-muted)]"
+                  : homeWinning
+                    ? "text-[var(--chalk-green)]"
+                    : "text-[var(--chalk-white)]"
               }`}
             >
               {game.homeTeam.score}
@@ -194,9 +347,14 @@ function GameCard({ game }: { game: PlayoffGame }) {
             <div className="text-center">
               <div
                 className={`text-lg font-bold ${
-                  homeWinning ? "text-[var(--chalk-white)]" : "text-[var(--chalk-muted)]"
+                  homeEliminated
+                    ? "text-red-400/50"
+                    : homeWinning
+                      ? "text-[var(--chalk-white)]"
+                      : "text-[var(--chalk-muted)]"
                 }`}
               >
+                {homeEliminated && <span className="mr-1 text-xs text-red-400">OUT</span>}
                 {game.homeTeam.abbreviation}
               </div>
               <div className="text-xs text-[var(--chalk-muted)]">{game.homeTeam.displayName}</div>
@@ -208,15 +366,33 @@ function GameCard({ game }: { game: PlayoffGame }) {
       {/* Players Section */}
       {game.players.length > 0 && (
         <div className="p-3">
-          <div className="text-xs font-medium text-[var(--chalk-muted)] mb-2 uppercase tracking-wider">
-            Your Players in This Game
+          <div className="text-xs font-medium text-[var(--chalk-muted)] mb-3 uppercase tracking-wider">
+            Rostered Players - Fantasy Scoring
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-1">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             {/* Away Team Players */}
             {awayPlayers.length > 0 && (
-              <div>
-                <div className="text-xs text-[var(--chalk-muted)] mb-1 px-2">
-                  {game.awayTeam.abbreviation}
+              <div className="space-y-2">
+                <div
+                  className={`flex items-center justify-between px-2 py-1 rounded ${
+                    awayEliminated ? "bg-red-900/20" : "bg-[rgba(255,255,255,0.05)]"
+                  }`}
+                >
+                  <span
+                    className={`text-sm font-medium ${
+                      awayEliminated ? "text-red-400" : "text-[var(--chalk-white)]"
+                    }`}
+                  >
+                    {game.awayTeam.abbreviation}
+                    {awayEliminated && " - Eliminated"}
+                  </span>
+                  <span
+                    className={`text-sm font-bold ${
+                      awayEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-green)]"
+                    }`}
+                  >
+                    {awayFantasyPts.toFixed(1)} pts
+                  </span>
                 </div>
                 {awayPlayers.map((player) => (
                   <PlayerStatLine key={player.playerId} player={player} />
@@ -225,9 +401,27 @@ function GameCard({ game }: { game: PlayoffGame }) {
             )}
             {/* Home Team Players */}
             {homePlayers.length > 0 && (
-              <div>
-                <div className="text-xs text-[var(--chalk-muted)] mb-1 px-2">
-                  {game.homeTeam.abbreviation}
+              <div className="space-y-2">
+                <div
+                  className={`flex items-center justify-between px-2 py-1 rounded ${
+                    homeEliminated ? "bg-red-900/20" : "bg-[rgba(255,255,255,0.05)]"
+                  }`}
+                >
+                  <span
+                    className={`text-sm font-medium ${
+                      homeEliminated ? "text-red-400" : "text-[var(--chalk-white)]"
+                    }`}
+                  >
+                    {game.homeTeam.abbreviation}
+                    {homeEliminated && " - Eliminated"}
+                  </span>
+                  <span
+                    className={`text-sm font-bold ${
+                      homeEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-green)]"
+                    }`}
+                  >
+                    {homeFantasyPts.toFixed(1)} pts
+                  </span>
                 </div>
                 {homePlayers.map((player) => (
                   <PlayerStatLine key={player.playerId} player={player} />
@@ -352,7 +546,7 @@ export function LiveGames() {
       {/* Games Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {data?.games.map((game) => (
-          <GameCard key={game.eventId} game={game} />
+          <GameCard key={game.eventId} game={game} eliminatedTeams={data.eliminatedTeams || []} />
         ))}
       </div>
 
