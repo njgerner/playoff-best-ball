@@ -5,7 +5,51 @@ import Link from "next/link";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 
-interface ProjectionPlayer {
+// Types for Rest of Playoffs view
+interface WeekProjection {
+  week: number;
+  weekName: string;
+  projectedPoints: number;
+  advanceProb: number;
+  expectedValue: number;
+}
+
+interface PlayerPlayoffProjection {
+  id: string;
+  name: string;
+  position: string;
+  team: string | null;
+  slot: string;
+  actualPoints: number;
+  avgPointsPerGame: number;
+  gamesPlayed: number;
+  weeklyBreakdown: WeekProjection[];
+  totalRemainingEV: number;
+  champProb: number | null;
+}
+
+interface OwnerPlayoffProjection {
+  ownerId: string;
+  ownerName: string;
+  players: PlayerPlayoffProjection[];
+  actualPoints: number;
+  totalRemainingEV: number;
+  totalProjectedPoints: number;
+  activePlayers: number;
+  eliminatedPlayers: number;
+}
+
+interface PlayoffsData {
+  projections: OwnerPlayoffProjection[];
+  completedWeeks: number[];
+  remainingWeeks: number[];
+  currentWeek: number;
+  year: number;
+  lastUpdated: string;
+}
+
+// Types for Single Week view
+interface SingleWeekPlayer {
   id: string;
   name: string;
   position: string;
@@ -18,18 +62,18 @@ interface ProjectionPlayer {
   opponent: string | null;
 }
 
-interface OwnerProjection {
+interface SingleWeekOwner {
   ownerId: string;
   ownerName: string;
-  players: ProjectionPlayer[];
+  players: SingleWeekPlayer[];
   actualPoints: number;
   projectedPoints: number;
   expectedValue: number;
   totalExpectedValue: number;
 }
 
-interface ProjectionsData {
-  projections: OwnerProjection[];
+interface SingleWeekData {
+  projections: SingleWeekOwner[];
   week: number | null;
   year: number;
   lastUpdated: string;
@@ -44,30 +88,57 @@ interface OddsData {
   }[];
 }
 
+const weekNames: Record<number, string> = {
+  1: "Wild Card",
+  2: "Divisional",
+  3: "Conference",
+  5: "Super Bowl",
+};
+
 export default function ProjectionsPage() {
-  const [data, setData] = useState<ProjectionsData | null>(null);
+  const [viewMode, setViewMode] = useState<"playoffs" | "week">("playoffs");
+  const [playoffsData, setPlayoffsData] = useState<PlayoffsData | null>(null);
+  const [weekData, setWeekData] = useState<SingleWeekData | null>(null);
   const [odds, setOdds] = useState<OddsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedWeek, setSelectedWeek] = useState(2);
+  const [expandedOwner, setExpandedOwner] = useState<string | null>(null);
 
-  const fetchData = useCallback(async () => {
+  const fetchPlayoffsData = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
+      const response = await fetch(`/api/projections/playoffs?year=${CURRENT_SEASON_YEAR}`);
+      if (!response.ok) throw new Error("Failed to fetch playoff projections");
+      const data = await response.json();
+      setPlayoffsData(data);
+
+      // Also fetch odds for display
+      const oddsRes = await fetch(`/api/odds?year=${CURRENT_SEASON_YEAR}`);
+      if (oddsRes.ok) {
+        setOdds(await oddsRes.json());
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch data");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchWeekData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError(null);
       const [projectionsRes, oddsRes] = await Promise.all([
         fetch(`/api/projections?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`),
         fetch(`/api/odds?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`),
       ]);
-
       if (!projectionsRes.ok) throw new Error("Failed to fetch projections");
-
-      const projectionsData = await projectionsRes.json();
-      setData(projectionsData);
-
+      setWeekData(await projectionsRes.json());
       if (oddsRes.ok) {
-        const oddsData = await oddsRes.json();
-        setOdds(oddsData);
+        setOdds(await oddsRes.json());
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to fetch data");
@@ -77,35 +148,32 @@ export default function ProjectionsPage() {
   }, [selectedWeek]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  const handleSyncProjections = async () => {
-    try {
-      setSyncing(true);
-      const response = await fetch(
-        `/api/projections/sync?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`,
-        { method: "POST" }
-      );
-      if (!response.ok) throw new Error("Failed to sync projections");
-      await fetchData();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync");
-    } finally {
-      setSyncing(false);
+    if (viewMode === "playoffs") {
+      fetchPlayoffsData();
+    } else {
+      fetchWeekData();
     }
-  };
+  }, [viewMode, fetchPlayoffsData, fetchWeekData]);
 
-  const handleSyncOdds = async () => {
+  const handleSyncAll = async () => {
     try {
       setSyncing(true);
-      const response = await fetch(`/api/odds?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`, {
+      // Sync odds for current week
+      await fetch(`/api/odds?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`, {
         method: "POST",
       });
-      if (!response.ok) throw new Error("Failed to sync odds");
-      await fetchData();
+      // Sync projections
+      await fetch(`/api/projections/sync?year=${CURRENT_SEASON_YEAR}&week=${selectedWeek}`, {
+        method: "POST",
+      });
+      // Refresh data
+      if (viewMode === "playoffs") {
+        await fetchPlayoffsData();
+      } else {
+        await fetchWeekData();
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to sync odds");
+      setError(err instanceof Error ? err.message : "Failed to sync");
     } finally {
       setSyncing(false);
     }
@@ -127,13 +195,6 @@ export default function ProjectionsPage() {
     );
   }
 
-  const weekLabels: Record<number, string> = {
-    1: "Wild Card",
-    2: "Divisional",
-    3: "Conference",
-    5: "Super Bowl",
-  };
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -141,49 +202,382 @@ export default function ProjectionsPage() {
         <div>
           <h1 className="text-3xl font-bold text-[var(--chalk-yellow)] chalk-text">Projections</h1>
           <p className="text-sm text-[var(--chalk-muted)]">
-            Expected value based on playoff performance and Vegas odds
+            {viewMode === "playoffs"
+              ? "Cumulative expected value for rest of playoffs"
+              : `Expected value for ${weekNames[selectedWeek]}`}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Week Selector */}
-          <select
-            value={selectedWeek}
-            onChange={(e) => setSelectedWeek(Number(e.target.value))}
-            className="bg-[var(--chalk-surface)] border border-[var(--chalk-border)] rounded px-3 py-1.5 text-sm text-[var(--chalk-text)]"
-          >
-            {[1, 2, 3, 5].map((week) => (
-              <option key={week} value={week}>
-                Week {week}: {weekLabels[week]}
-              </option>
-            ))}
-          </select>
+          {/* View Mode Toggle */}
+          <div className="flex rounded-lg overflow-hidden border border-[var(--chalk-border)]">
+            <button
+              onClick={() => setViewMode("playoffs")}
+              className={`px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "playoffs"
+                  ? "bg-[var(--chalk-yellow)] text-black font-semibold"
+                  : "bg-[var(--chalk-surface)] text-[var(--chalk-text)] hover:bg-[var(--chalk-border)]"
+              }`}
+            >
+              Rest of Playoffs
+            </button>
+            <button
+              onClick={() => setViewMode("week")}
+              className={`px-3 py-1.5 text-sm transition-colors ${
+                viewMode === "week"
+                  ? "bg-[var(--chalk-yellow)] text-black font-semibold"
+                  : "bg-[var(--chalk-surface)] text-[var(--chalk-text)] hover:bg-[var(--chalk-border)]"
+              }`}
+            >
+              Single Week
+            </button>
+          </div>
 
-          {/* Sync Buttons */}
+          {viewMode === "week" && (
+            <select
+              value={selectedWeek}
+              onChange={(e) => setSelectedWeek(Number(e.target.value))}
+              className="bg-[var(--chalk-surface)] border border-[var(--chalk-border)] rounded px-3 py-1.5 text-sm text-[var(--chalk-text)]"
+            >
+              {[1, 2, 3, 5].map((week) => (
+                <option key={week} value={week}>
+                  {weekNames[week]}
+                </option>
+              ))}
+            </select>
+          )}
+
           <button
-            onClick={handleSyncOdds}
-            disabled={syncing}
-            className="px-3 py-1.5 text-sm bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 rounded transition-colors"
-          >
-            {syncing ? "..." : "Sync Odds"}
-          </button>
-          <button
-            onClick={handleSyncProjections}
+            onClick={handleSyncAll}
             disabled={syncing}
             className="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700 disabled:bg-green-800 rounded transition-colors"
           >
-            {syncing ? "..." : "Sync Projections"}
+            {syncing ? "Syncing..." : "Sync Data"}
           </button>
         </div>
       </div>
 
+      {viewMode === "playoffs" && playoffsData && (
+        <PlayoffsView
+          data={playoffsData}
+          odds={odds}
+          expandedOwner={expandedOwner}
+          setExpandedOwner={setExpandedOwner}
+        />
+      )}
+
+      {viewMode === "week" && weekData && <SingleWeekView data={weekData} odds={odds} />}
+    </div>
+  );
+}
+
+// Rest of Playoffs View Component
+function PlayoffsView({
+  data,
+  odds,
+  expandedOwner,
+  setExpandedOwner,
+}: {
+  data: PlayoffsData;
+  odds: OddsData | null;
+  expandedOwner: string | null;
+  setExpandedOwner: (id: string | null) => void;
+}) {
+  return (
+    <>
+      {/* Playoff Status */}
+      <div className="flex flex-wrap gap-2 text-sm">
+        <span className="text-[var(--chalk-muted)]">Completed:</span>
+        {data.completedWeeks.map((w) => (
+          <span key={w} className="px-2 py-0.5 bg-green-900/30 text-green-400 rounded">
+            {weekNames[w]}
+          </span>
+        ))}
+        <span className="text-[var(--chalk-muted)] ml-2">Remaining:</span>
+        {data.remainingWeeks.map((w) => (
+          <span key={w} className="px-2 py-0.5 bg-blue-900/30 text-blue-400 rounded">
+            {weekNames[w]}
+          </span>
+        ))}
+      </div>
+
+      {/* Main Leaderboard */}
+      <Card>
+        <CardHeader className="pb-2">
+          <h2 className="text-lg font-semibold text-[var(--chalk-text)]">
+            Rest of Playoffs Leaderboard
+          </h2>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--chalk-border)]">
+                  <th className="text-left py-2 px-2 text-[var(--chalk-muted)]">Rank</th>
+                  <th className="text-left py-2 px-2 text-[var(--chalk-muted)]">Owner</th>
+                  <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">Actual</th>
+                  <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">Remaining EV</th>
+                  <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">Total EV</th>
+                  <th className="text-center py-2 px-2 text-[var(--chalk-muted)]">Active</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.projections.map((owner, index) => {
+                  const totalEV = owner.actualPoints + owner.totalRemainingEV;
+                  return (
+                    <tr
+                      key={owner.ownerId}
+                      className="border-b border-[var(--chalk-border)]/50 hover:bg-[var(--chalk-surface)] cursor-pointer"
+                      onClick={() =>
+                        setExpandedOwner(expandedOwner === owner.ownerId ? null : owner.ownerId)
+                      }
+                    >
+                      <td className="py-3 px-2">
+                        <RankBadge rank={index + 1} />
+                      </td>
+                      <td className="py-3 px-2 font-semibold text-[var(--chalk-text)]">
+                        <div className="flex items-center gap-2">
+                          {owner.ownerName}
+                          <span className="text-xs text-[var(--chalk-muted)]">
+                            {expandedOwner === owner.ownerId ? "▼" : "▶"}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-2 text-right text-[var(--chalk-text)]">
+                        {owner.actualPoints.toFixed(1)}
+                      </td>
+                      <td className="py-3 px-2 text-right text-[var(--chalk-blue)]">
+                        +{owner.totalRemainingEV.toFixed(1)}
+                      </td>
+                      <td className="py-3 px-2 text-right font-bold text-[var(--chalk-green)] text-lg">
+                        {totalEV.toFixed(1)}
+                      </td>
+                      <td className="py-3 px-2 text-center">
+                        <span className="text-[var(--chalk-green)]">{owner.activePlayers}</span>
+                        <span className="text-[var(--chalk-muted)]">/</span>
+                        <span className="text-red-400">{owner.eliminatedPlayers}</span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Expanded Owner Details */}
+      {expandedOwner && (
+        <OwnerPlayoffDetails
+          owner={data.projections.find((o) => o.ownerId === expandedOwner)!}
+          remainingWeeks={data.remainingWeeks}
+        />
+      )}
+
+      {/* All Owner Cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {data.projections.map((owner, rank) => (
+          <OwnerPlayoffCard
+            key={owner.ownerId}
+            owner={owner}
+            rank={rank}
+            remainingWeeks={data.remainingWeeks}
+          />
+        ))}
+      </div>
+    </>
+  );
+}
+
+// Owner Playoff Card Component
+function OwnerPlayoffCard({
+  owner,
+  rank,
+  remainingWeeks,
+}: {
+  owner: OwnerPlayoffProjection;
+  rank: number;
+  remainingWeeks: number[];
+}) {
+  const totalEV = owner.actualPoints + owner.totalRemainingEV;
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <RankBadge rank={rank + 1} />
+            <h3 className="text-lg font-bold text-[var(--chalk-yellow)]">{owner.ownerName}</h3>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-bold text-[var(--chalk-green)]">{totalEV.toFixed(1)}</div>
+            <div className="text-xs text-[var(--chalk-muted)]">Total EV</div>
+          </div>
+        </div>
+        <div className="flex gap-4 text-xs text-[var(--chalk-muted)] mt-1">
+          <span>Actual: {owner.actualPoints.toFixed(1)}</span>
+          <span className="text-[var(--chalk-blue)]">
+            +{owner.totalRemainingEV.toFixed(1)} remaining
+          </span>
+          <span>
+            <span className="text-[var(--chalk-green)]">{owner.activePlayers}</span> active /
+            <span className="text-red-400 ml-1">{owner.eliminatedPlayers}</span> out
+          </span>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1">
+          {owner.players.slice(0, 9).map((player) => (
+            <div
+              key={player.id}
+              className={`flex items-center justify-between py-1 px-2 rounded hover:bg-[var(--chalk-surface)] ${
+                player.totalRemainingEV === 0 ? "opacity-50" : ""
+              }`}
+            >
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="w-8 text-xs font-medium text-[var(--chalk-muted)]">
+                  {player.slot}
+                </span>
+                <Link
+                  href={`/player/${player.id}`}
+                  className="text-sm text-[var(--chalk-text)] hover:text-[var(--chalk-blue)] transition-colors truncate"
+                >
+                  {player.name}
+                </Link>
+                {player.team && (
+                  <span className="text-xs text-[var(--chalk-muted)]">{player.team}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-sm">
+                <span className="text-[var(--chalk-text)] w-10 text-right">
+                  {player.actualPoints.toFixed(1)}
+                </span>
+                <span className="text-[var(--chalk-muted)] w-10 text-right text-xs">
+                  {player.avgPointsPerGame.toFixed(1)}/g
+                </span>
+                {player.champProb !== null && (
+                  <span className="text-purple-400 w-10 text-right text-xs">
+                    {(player.champProb * 100).toFixed(0)}%
+                  </span>
+                )}
+                <span className="text-[var(--chalk-green)] w-12 text-right font-medium">
+                  +{player.totalRemainingEV.toFixed(1)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-4 mt-3 pt-2 border-t border-[var(--chalk-border)]/50 text-xs text-[var(--chalk-muted)]">
+          <span>Actual</span>
+          <span>Avg/G</span>
+          <span className="text-purple-400">Champ%</span>
+          <span className="text-[var(--chalk-green)]">Rem EV</span>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Expanded Owner Details
+function OwnerPlayoffDetails({
+  owner,
+  remainingWeeks,
+}: {
+  owner: OwnerPlayoffProjection;
+  remainingWeeks: number[];
+}) {
+  return (
+    <Card className="border-2 border-[var(--chalk-yellow)]">
+      <CardHeader>
+        <h3 className="text-xl font-bold text-[var(--chalk-yellow)]">
+          {owner.ownerName} - Week by Week Breakdown
+        </h3>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[var(--chalk-border)]">
+                <th className="text-left py-2 px-2 text-[var(--chalk-muted)]">Player</th>
+                <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">Actual</th>
+                <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">Avg/G</th>
+                {remainingWeeks.map((w) => (
+                  <th key={w} className="text-right py-2 px-2 text-[var(--chalk-muted)]">
+                    {weekNames[w]}
+                  </th>
+                ))}
+                <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">Total EV</th>
+              </tr>
+            </thead>
+            <tbody>
+              {owner.players.map((player) => (
+                <tr
+                  key={player.id}
+                  className={`border-b border-[var(--chalk-border)]/50 ${
+                    player.totalRemainingEV === 0 ? "opacity-50" : ""
+                  }`}
+                >
+                  <td className="py-2 px-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-[var(--chalk-muted)]">{player.slot}</span>
+                      <Link
+                        href={`/player/${player.id}`}
+                        className="text-[var(--chalk-text)] hover:text-[var(--chalk-blue)]"
+                      >
+                        {player.name}
+                      </Link>
+                      {player.team && (
+                        <span className="text-xs text-[var(--chalk-muted)]">{player.team}</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="py-2 px-2 text-right text-[var(--chalk-text)]">
+                    {player.actualPoints.toFixed(1)}
+                  </td>
+                  <td className="py-2 px-2 text-right text-[var(--chalk-muted)]">
+                    {player.avgPointsPerGame.toFixed(1)}
+                  </td>
+                  {remainingWeeks.map((w) => {
+                    const weekData = player.weeklyBreakdown.find((wb) => wb.week === w);
+                    return (
+                      <td key={w} className="py-2 px-2 text-right">
+                        {weekData ? (
+                          <div>
+                            <span className="text-[var(--chalk-green)]">
+                              {weekData.expectedValue.toFixed(1)}
+                            </span>
+                            <div className="text-xs text-[var(--chalk-muted)]">
+                              {(weekData.advanceProb * 100).toFixed(0)}%
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-[var(--chalk-muted)]">-</span>
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="py-2 px-2 text-right font-bold text-[var(--chalk-green)]">
+                    {player.totalRemainingEV.toFixed(1)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Single Week View Component (Original)
+function SingleWeekView({ data, odds }: { data: SingleWeekData; odds: OddsData | null }) {
+  return (
+    <>
       {/* Team Odds Summary */}
       {odds && odds.odds.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
-            <h2 className="text-lg font-semibold text-[var(--chalk-text)]">
-              {weekLabels[selectedWeek]} Matchups
-            </h2>
+            <h2 className="text-lg font-semibold text-[var(--chalk-text)]">Matchups</h2>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -245,25 +639,13 @@ export default function ProjectionsPage() {
                 </tr>
               </thead>
               <tbody>
-                {data?.projections.map((owner, index) => (
+                {data.projections.map((owner, index) => (
                   <tr
                     key={owner.ownerId}
                     className="border-b border-[var(--chalk-border)]/50 hover:bg-[var(--chalk-surface)]"
                   >
                     <td className="py-2 px-2">
-                      <span
-                        className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold ${
-                          index === 0
-                            ? "bg-yellow-500/20 text-yellow-400"
-                            : index === 1
-                              ? "bg-gray-400/20 text-gray-300"
-                              : index === 2
-                                ? "bg-amber-600/20 text-amber-500"
-                                : "bg-[var(--chalk-surface)] text-[var(--chalk-muted)]"
-                        }`}
-                      >
-                        {index + 1}
-                      </span>
+                      <RankBadge rank={index + 1} />
                     </td>
                     <td className="py-2 px-2 font-semibold text-[var(--chalk-text)]">
                       {owner.ownerName}
@@ -288,26 +670,14 @@ export default function ProjectionsPage() {
         </CardContent>
       </Card>
 
-      {/* Owner Cards with Player Details */}
+      {/* Owner Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {data?.projections.map((owner, rank) => (
+        {data.projections.map((owner, rank) => (
           <Card key={owner.ownerId}>
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold ${
-                      rank === 0
-                        ? "bg-yellow-500/20 text-yellow-400"
-                        : rank === 1
-                          ? "bg-gray-400/20 text-gray-300"
-                          : rank === 2
-                            ? "bg-amber-600/20 text-amber-500"
-                            : "bg-[var(--chalk-surface)] text-[var(--chalk-muted)]"
-                    }`}
-                  >
-                    {rank + 1}
-                  </span>
+                  <RankBadge rank={rank + 1} />
                   <h3 className="text-lg font-bold text-[var(--chalk-yellow)]">
                     {owner.ownerName}
                   </h3>
@@ -318,11 +688,6 @@ export default function ProjectionsPage() {
                   </div>
                   <div className="text-xs text-[var(--chalk-muted)]">Total EV</div>
                 </div>
-              </div>
-              <div className="flex gap-4 text-xs text-[var(--chalk-muted)] mt-1">
-                <span>Actual: {owner.actualPoints.toFixed(1)}</span>
-                <span>Projected: {owner.projectedPoints.toFixed(1)}</span>
-                <span>Remaining EV: {owner.expectedValue.toFixed(1)}</span>
               </div>
             </CardHeader>
             <CardContent>
@@ -342,27 +707,11 @@ export default function ProjectionsPage() {
                       >
                         {player.name}
                       </Link>
-                      {player.team && (
-                        <span className="text-xs text-[var(--chalk-muted)]">{player.team}</span>
-                      )}
-                      {player.opponent && (
-                        <span className="text-xs text-[var(--chalk-muted)]">
-                          vs {player.opponent}
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-center gap-3 text-sm">
                       <span className="text-[var(--chalk-text)] w-12 text-right">
                         {player.actualPoints.toFixed(1)}
                       </span>
-                      <span className="text-[var(--chalk-blue)] w-12 text-right">
-                        {player.projectedPoints.toFixed(1)}
-                      </span>
-                      {player.teamWinProb !== null && (
-                        <span className="text-[var(--chalk-muted)] w-10 text-right text-xs">
-                          {(player.teamWinProb * 100).toFixed(0)}%
-                        </span>
-                      )}
                       <span className="text-[var(--chalk-green)] w-12 text-right font-medium">
                         {player.expectedValue !== null ? player.expectedValue.toFixed(1) : "-"}
                       </span>
@@ -370,17 +719,29 @@ export default function ProjectionsPage() {
                   </div>
                 ))}
               </div>
-              {/* Legend */}
-              <div className="flex gap-4 mt-3 pt-2 border-t border-[var(--chalk-border)]/50 text-xs text-[var(--chalk-muted)]">
-                <span>Actual</span>
-                <span className="text-[var(--chalk-blue)]">Projected</span>
-                <span>Win%</span>
-                <span className="text-[var(--chalk-green)]">EV</span>
-              </div>
             </CardContent>
           </Card>
         ))}
       </div>
-    </div>
+    </>
+  );
+}
+
+// Rank Badge Component
+function RankBadge({ rank }: { rank: number }) {
+  return (
+    <span
+      className={`inline-flex items-center justify-center w-7 h-7 rounded-full text-sm font-bold ${
+        rank === 1
+          ? "bg-yellow-500/20 text-yellow-400"
+          : rank === 2
+            ? "bg-gray-400/20 text-gray-300"
+            : rank === 3
+              ? "bg-amber-600/20 text-amber-500"
+              : "bg-[var(--chalk-surface)] text-[var(--chalk-muted)]"
+      }`}
+    >
+      {rank}
+    </span>
   );
 }
