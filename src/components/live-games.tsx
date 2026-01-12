@@ -300,8 +300,8 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
                 }`}
               >
                 {game.awayTeam.abbreviation}
-                {awayEliminated && <span className="ml-1 text-xs text-red-400">OUT</span>}
               </div>
+              {awayEliminated && <div className="text-xs text-red-400 font-medium">OUT</div>}
               <div className="text-xs text-[var(--chalk-muted)]">{game.awayTeam.displayName}</div>
             </div>
             <div
@@ -354,17 +354,17 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
                       : "text-[var(--chalk-muted)]"
                 }`}
               >
-                {homeEliminated && <span className="mr-1 text-xs text-red-400">OUT</span>}
                 {game.homeTeam.abbreviation}
               </div>
+              {homeEliminated && <div className="text-xs text-red-400 font-medium">OUT</div>}
               <div className="text-xs text-[var(--chalk-muted)]">{game.homeTeam.displayName}</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Players Section */}
-      {game.players.length > 0 && (
+      {/* Players Section - only show if there are rostered players from either team */}
+      {(awayPlayers.length > 0 || homePlayers.length > 0) && (
         <div className="p-3">
           <div className="text-xs font-medium text-[var(--chalk-muted)] mb-3 uppercase tracking-wider">
             Rostered Players - Fantasy Scoring
@@ -433,7 +433,7 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
       )}
 
       {/* No players message */}
-      {game.players.length === 0 && game.status.state !== "pre" && (
+      {awayPlayers.length === 0 && homePlayers.length === 0 && game.status.state !== "pre" && (
         <div className="p-3 text-center text-sm text-[var(--chalk-muted)]">
           No rostered players in this game
         </div>
