@@ -1,9 +1,13 @@
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaClient } from "@prisma/client";
+import ws from "ws";
 
-// Required for serverless environments
-neonConfig.useSecureWebSocket = true;
+// Configure WebSocket for Node.js environments (local dev)
+// In serverless/edge environments, the native WebSocket is used
+if (typeof WebSocket === "undefined") {
+  neonConfig.webSocketConstructor = ws;
+}
 
 const connectionString = process.env.DATABASE_URL;
 
