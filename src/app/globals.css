@@ -1,5 +1,10 @@
 @import "tailwindcss";
 
+/* Safe area support for notched devices */
+.safe-area-pb {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
 :root {
   /* Pavement/slate background */
   --background: #2d3436;
