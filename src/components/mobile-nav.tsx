@@ -3,87 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-// Main navigation tabs (shown in bottom bar)
-const mainTabs = [
-  {
-    href: "/",
-    label: "Live",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M13 10V3L4 14h7v7l9-11h-7z"
-        />
-      </svg>
-    ),
-  },
-  {
-    href: "/projections",
-    label: "EV",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"
-        />
-      </svg>
-    ),
-  },
-  {
-    href: "/schedule",
-    label: "Bracket",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"
-        />
-      </svg>
-    ),
-  },
-  {
-    href: "/rosters",
-    label: "Rosters",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
-        />
-      </svg>
-    ),
-  },
-  {
-    href: "/scoring",
-    label: "Rules",
-    icon: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-        />
-      </svg>
-    ),
-  },
+// Navigation tabs for sub-header
+const navTabs = [
+  { href: "/", label: "Live" },
+  { href: "/projections", label: "EV" },
+  { href: "/schedule", label: "Bracket" },
+  { href: "/rosters", label: "Rosters" },
+  { href: "/scoring", label: "Rules" },
 ];
 
 export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[var(--background)] border-t-2 border-dashed border-[var(--chalk-yellow)] safe-area-pb">
-      <div className="flex justify-around items-center h-16">
-        {mainTabs.map((tab) => {
+    <nav className="md:hidden overflow-x-auto scrollbar-hide border-b border-[var(--chalk-muted)]/30 bg-[var(--background)]">
+      <div className="flex min-w-max px-2">
+        {navTabs.map((tab) => {
           const isActive =
             pathname === tab.href || (tab.href !== "/" && pathname.startsWith(tab.href));
 
@@ -91,14 +26,16 @@ export function MobileNav() {
             <Link
               key={tab.href}
               href={tab.href}
-              className={`flex flex-col items-center justify-center flex-1 h-full py-2 transition-colors ${
+              className={`relative px-4 py-3 text-sm font-medium whitespace-nowrap transition-colors ${
                 isActive
                   ? "text-[var(--chalk-pink)]"
                   : "text-[var(--chalk-muted)] active:text-[var(--chalk-white)]"
               }`}
             >
-              <span className={isActive ? "text-[var(--chalk-pink)]" : ""}>{tab.icon}</span>
-              <span className="text-xs mt-1 font-medium">{tab.label}</span>
+              {tab.label}
+              {isActive && (
+                <span className="absolute bottom-0 left-2 right-2 h-0.5 bg-[var(--chalk-pink)] rounded-full" />
+              )}
             </Link>
           );
         })}

@@ -48,16 +48,19 @@ export default function RootLayout({
           </div>
         </nav>
 
-        {/* Main Content - extra padding on mobile for bottom nav */}
+        {/* Mobile Sub-Header Navigation */}
+        <MobileNav />
+
+        {/* Main Content */}
         <main
-          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8 pb-24 md:pb-8"
+          className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 md:py-8"
           style={{ fontFamily: "var(--font-chalk)" }}
         >
           {children}
         </main>
 
-        {/* Footer - hidden on mobile since we have bottom nav */}
-        <footer className="hidden md:block border-t-2 border-dashed border-[var(--chalk-muted)] mt-12 py-6 text-center">
+        {/* Footer */}
+        <footer className="border-t-2 border-dashed border-[var(--chalk-muted)] mt-12 py-6 text-center">
           <p
             className="text-[var(--chalk-muted)] text-sm"
             style={{ fontFamily: "var(--font-chalk-mono)" }}
@@ -65,9 +68,6 @@ export default function RootLayout({
             2025 Playoff Best Ball
           </p>
         </footer>
-
-        {/* Mobile Bottom Navigation */}
-        <MobileNav />
       </body>
     </html>
   );

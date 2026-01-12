@@ -1,8 +1,12 @@
 @import "tailwindcss";
 
-/* Safe area support for notched devices */
-.safe-area-pb {
-  padding-bottom: env(safe-area-inset-bottom, 0);
+/* Hide scrollbar but allow scrolling */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 :root {
