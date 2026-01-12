@@ -3,31 +3,41 @@ export type Position = "QB" | "RB" | "WR" | "TE" | "K" | "DST";
 export type RosterSlot = "QB" | "RB1" | "RB2" | "WR1" | "WR2" | "TE" | "FLEX" | "K" | "DST";
 
 export interface ScoringRules {
+  // Passing
   passYardsPerPoint: number;
   passTd: number;
   passInt: number;
+  // Rushing
   rushYardsPerPoint: number;
   rushTd: number;
+  // Receiving
   recYardsPerPoint: number;
   recTd: number;
   ppr: number;
+  // Misc Offense
   twoPtConv: number;
   fumbleLost: number;
   returnTd: number;
+  offFumRetTd: number;
+  // Kicking - Made FGs
   fg0_19: number;
   fg20_29: number;
   fg30_39: number;
   fg40_49: number;
   fg50Plus: number;
-  fgMiss: number;
+  // Kicking - Missed FGs (only 0-39 yards penalized)
+  fgMiss0_39: number;
   xpMade: number;
   xpMiss: number;
+  // Defense/Special Teams
   sack: number;
   defInt: number;
   fumRec: number;
   dstTd: number;
   safety: number;
   block: number;
+  xpReturned: number;
+  // Points Allowed
   pa0: number;
   pa1_6: number;
   pa7_13: number;

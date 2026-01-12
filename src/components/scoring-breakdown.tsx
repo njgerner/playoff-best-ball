@@ -49,25 +49,33 @@ interface ScoringBreakdownProps {
   totalPoints: number;
 }
 
-// Scoring rules for display
+// Scoring rules for display - Half PPR league
 const RULES = {
+  // Passing
   passYardsPerPoint: 30,
   passTd: 6,
   passInt: -2,
+  // Rushing
   rushYardsPerPoint: 10,
   rushTd: 6,
+  // Receiving (Half PPR)
   recYardsPerPoint: 10,
   recTd: 6,
   ppr: 0.5,
+  // Misc Offense
   twoPtConv: 2,
   fumbleLost: -2,
+  returnTd: 6,
+  // Kicking
   xpMade: 1,
   xpMiss: -1,
+  // Defense
   sack: 1,
   defInt: 2,
   fumRec: 2,
   dstTd: 6,
   safety: 4,
+  block: 2,
 };
 
 function formatPoints(pts: number): string {
@@ -235,7 +243,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
   if (stats.receptions && stats.receptions > 0) {
     const pts = stats.receptions * RULES.ppr;
     statLines.push({
-      label: "Receptions (PPR)",
+      label: "Receptions",
       value: stats.receptions,
       calculation: `${stats.receptions} × ${RULES.ppr}`,
       points: pts,
@@ -282,7 +290,7 @@ export function ScoringBreakdown({ weekLabel, stats, totalPoints }: ScoringBreak
       rawValue: stats.fgPoints,
       multiplier: 1,
       operation: "multiply",
-      explanation: `Field goals are scored based on distance: 0-39 yards = 3 pts, 40-49 yards = 4 pts, 50+ yards = 5 pts. Missed FGs cost 1 point. Longer kicks are rewarded more because they're harder to make.`,
+      explanation: `Field goals are scored based on distance: 0-39 yards = 3 pts, 40-49 yards = 4 pts, 50+ yards = 5 pts. Only missed FGs under 40 yards cost 1 point (no penalty for missing 40+ yard attempts). Longer kicks are rewarded more because they're harder to make.`,
     });
   }
   if (stats.xpMade && stats.xpMade > 0) {

@@ -1,54 +1,57 @@
 import { ScoringRules } from "@/types";
 
 /**
- * Default scoring rules matching the original App Script
+ * Default scoring rules - Half PPR league
  */
 export const DEFAULT_SCORING_RULES: ScoringRules = {
   // Passing
-  passYardsPerPoint: 30,
+  passYardsPerPoint: 30, // 30 yards per point
   passTd: 6,
   passInt: -2,
 
   // Rushing
-  rushYardsPerPoint: 10,
+  rushYardsPerPoint: 10, // 10 yards per point
   rushTd: 6,
 
-  // Receiving
-  recYardsPerPoint: 10,
+  // Receiving (Half PPR)
+  recYardsPerPoint: 10, // 10 yards per point
   recTd: 6,
-  ppr: 0.5,
+  ppr: 0.5, // Half point per reception
 
   // Miscellaneous Offense
   twoPtConv: 2,
   fumbleLost: -2,
   returnTd: 6,
+  offFumRetTd: 6, // Offensive fumble return TD
 
-  // Kicking
+  // Kicking - Made Field Goals
   fg0_19: 3,
   fg20_29: 3,
   fg30_39: 3,
   fg40_49: 4,
   fg50Plus: 5,
-  fgMiss: -1,
-  xpMade: 1,
-  xpMiss: -1,
+  // Kicking - Missed Field Goals (only 0-39 yards penalized)
+  fgMiss0_39: -1,
+  xpMade: 1, // PAT Made
+  xpMiss: -1, // PAT Missed
 
   // Defense/Special Teams
   sack: 1,
-  defInt: 2,
-  fumRec: 2,
-  dstTd: 6,
+  defInt: 2, // Interception
+  fumRec: 2, // Fumble Recovery
+  dstTd: 6, // Defensive/ST Touchdown
   safety: 4,
-  block: 2,
+  block: 2, // Blocked Kick
+  xpReturned: 2, // Extra Point Returned
 
   // Points Allowed
-  pa0: 10,
-  pa1_6: 7,
-  pa7_13: 4,
-  pa14_20: 1,
-  pa21_27: 0,
-  pa28_34: -1,
-  pa35Plus: -3,
+  pa0: 10, // 0 points
+  pa1_6: 7, // 1-6 points
+  pa7_13: 4, // 7-13 points
+  pa14_20: 1, // 14-20 points
+  pa21_27: 0, // 21-27 points
+  pa28_34: -1, // 28-34 points
+  pa35Plus: -3, // 35+ points
 };
 
 /**
@@ -66,7 +69,9 @@ export function getFieldGoalPoints(
     if (distance < 50) return rules.fg40_49;
     return rules.fg50Plus;
   } else {
-    return rules.fgMiss;
+    // Only penalize missed FGs under 40 yards
+    if (distance < 40) return rules.fgMiss0_39;
+    return 0; // No penalty for missing 40+ yard FGs
   }
 }
 

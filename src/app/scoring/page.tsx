@@ -135,19 +135,19 @@ export default function ScoringPage() {
                   </td>
                 </tr>
                 <tr className="border-b border-dashed border-[rgba(255,255,255,0.1)]">
-                  <td className="py-2 text-[var(--chalk-white)]">FG Missed</td>
+                  <td className="py-2 text-[var(--chalk-white)]">FG Missed 0-39 yds</td>
                   <td className="py-2 text-right font-medium text-[var(--chalk-red)]">
-                    {rules.fgMiss} pts
+                    {rules.fgMiss0_39} pts
                   </td>
                 </tr>
                 <tr className="border-b border-dashed border-[rgba(255,255,255,0.1)]">
-                  <td className="py-2 text-[var(--chalk-white)]">Extra Point Made</td>
+                  <td className="py-2 text-[var(--chalk-white)]">PAT Made</td>
                   <td className="py-2 text-right font-medium text-[var(--chalk-green)]">
                     +{rules.xpMade} pts
                   </td>
                 </tr>
                 <tr>
-                  <td className="py-2 text-[var(--chalk-white)]">Extra Point Missed</td>
+                  <td className="py-2 text-[var(--chalk-white)]">PAT Missed</td>
                   <td className="py-2 text-right font-medium text-[var(--chalk-red)]">
                     {rules.xpMiss} pts
                   </td>
@@ -195,10 +195,16 @@ export default function ScoringPage() {
                     +{rules.safety} pts
                   </td>
                 </tr>
-                <tr>
+                <tr className="border-b border-dashed border-[rgba(255,255,255,0.1)]">
                   <td className="py-2 text-[var(--chalk-white)]">Blocked Kick</td>
                   <td className="py-2 text-right font-medium text-[var(--chalk-green)]">
                     +{rules.block} pts
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-2 text-[var(--chalk-white)]">Extra Point Returned</td>
+                  <td className="py-2 text-right font-medium text-[var(--chalk-green)]">
+                    +{rules.xpReturned} pts
                   </td>
                 </tr>
               </tbody>
