@@ -13,6 +13,8 @@ interface PlayerScore {
   points: number;
   isEliminated: boolean;
   previousPoints?: number;
+  projectedPoints?: number;
+  expectedValue?: number | null;
 }
 
 interface OwnerRoster {
@@ -22,6 +24,8 @@ interface OwnerRoster {
   totalPoints: number;
   activePlayers: number;
   previousTotal?: number;
+  projectedPoints?: number;
+  expectedValue?: number;
 }
 
 interface LiveData {
@@ -29,6 +33,19 @@ interface LiveData {
   eliminatedTeams: string[];
   lastUpdated: string;
   week: number;
+}
+
+interface ProjectionData {
+  projections: {
+    ownerId: string;
+    players: {
+      id: string;
+      projectedPoints: number;
+      expectedValue: number | null;
+    }[];
+    projectedPoints: number;
+    expectedValue: number;
+  }[];
 }
 
 const POSITION_COLORS: Record<string, string> = {
@@ -48,31 +65,67 @@ export function LiveScoreboard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [countdown, setCountdown] = useState(60);
+  const [showProjections, setShowProjections] = useState(false);
 
   const fetchScores = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
 
-      const response = await fetch(`/api/live?year=${CURRENT_SEASON_YEAR}`);
-      if (!response.ok) {
-        throw new Error(`Failed to fetch: ${response.status}`);
+      // Fetch both live scores and projections
+      const [liveResponse, projectionsResponse] = await Promise.all([
+        fetch(`/api/live?year=${CURRENT_SEASON_YEAR}`),
+        fetch(`/api/projections?year=${CURRENT_SEASON_YEAR}`),
+      ]);
+
+      if (!liveResponse.ok) {
+        throw new Error(`Failed to fetch: ${liveResponse.status}`);
       }
 
-      const result = await response.json();
+      const result = await liveResponse.json();
+      let projections: ProjectionData | null = null;
 
-      // Check for score changes and add previousPoints
+      if (projectionsResponse.ok) {
+        projections = await projectionsResponse.json();
+      }
+
+      // Check for score changes and add previousPoints + projections
       if (data?.rosters) {
         result.rosters = result.rosters.map((roster: OwnerRoster) => {
           const prevRoster = data.rosters.find((r) => r.ownerId === roster.ownerId);
+          const projRoster = projections?.projections.find((p) => p.ownerId === roster.ownerId);
+
           return {
             ...roster,
             previousTotal: prevRoster?.totalPoints,
+            projectedPoints: projRoster?.projectedPoints || 0,
+            expectedValue: projRoster?.expectedValue || 0,
             players: roster.players.map((player) => {
               const prevPlayer = prevRoster?.players.find((p) => p.id === player.id);
+              const projPlayer = projRoster?.players.find((p) => p.id === player.id);
               return {
                 ...player,
                 previousPoints: prevPlayer?.points,
+                projectedPoints: projPlayer?.projectedPoints || 0,
+                expectedValue: projPlayer?.expectedValue,
+              };
+            }),
+          };
+        });
+      } else if (projections) {
+        // First load - add projections
+        result.rosters = result.rosters.map((roster: OwnerRoster) => {
+          const projRoster = projections?.projections.find((p) => p.ownerId === roster.ownerId);
+          return {
+            ...roster,
+            projectedPoints: projRoster?.projectedPoints || 0,
+            expectedValue: projRoster?.expectedValue || 0,
+            players: roster.players.map((player) => {
+              const projPlayer = projRoster?.players.find((p) => p.id === player.id);
+              return {
+                ...player,
+                projectedPoints: projPlayer?.projectedPoints || 0,
+                expectedValue: projPlayer?.expectedValue,
               };
             }),
           };
@@ -148,6 +201,17 @@ export function LiveScoreboard() {
         </div>
 
         <div className="flex items-center gap-3">
+          {/* Show projections toggle */}
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={showProjections}
+              onChange={(e) => setShowProjections(e.target.checked)}
+              className="w-4 h-4 rounded"
+            />
+            <span className="text-[var(--chalk-blue)]">Show EV</span>
+          </label>
+
           {/* Auto-refresh toggle */}
           <label className="flex items-center gap-2 text-sm cursor-pointer">
             <input
@@ -196,6 +260,7 @@ export function LiveScoreboard() {
             const pointChange =
               roster.previousTotal !== undefined ? roster.totalPoints - roster.previousTotal : null;
             const isUp = pointChange !== null && pointChange > 0;
+            const totalEV = roster.totalPoints + (roster.expectedValue || 0);
 
             return (
               <div
@@ -211,6 +276,11 @@ export function LiveScoreboard() {
                 <div className="text-lg font-bold text-[var(--chalk-green)] chalk-score">
                   {roster.totalPoints.toFixed(1)}
                 </div>
+                {showProjections &&
+                  roster.expectedValue !== undefined &&
+                  roster.expectedValue > 0 && (
+                    <div className="text-xs text-[var(--chalk-blue)]">EV: {totalEV.toFixed(1)}</div>
+                  )}
                 <div className="text-xs text-[var(--chalk-muted)]">
                   {roster.activePlayers}/9 active
                 </div>
@@ -264,6 +334,10 @@ export function LiveScoreboard() {
                     : null;
                 const isUp = pointChange !== null && pointChange > 0.01;
                 const posColor = POSITION_COLORS[player.position] || "text-[var(--chalk-white)]";
+                const hasEV =
+                  player.expectedValue !== undefined &&
+                  player.expectedValue !== null &&
+                  player.expectedValue > 0;
 
                 return (
                   <Link
@@ -288,6 +362,11 @@ export function LiveScoreboard() {
                       {isUp && (
                         <span className="text-xs text-green-400 animate-pulse">
                           +{pointChange.toFixed(1)}
+                        </span>
+                      )}
+                      {showProjections && hasEV && (
+                        <span className="text-xs text-[var(--chalk-blue)] mr-1">
+                          +{player.expectedValue!.toFixed(1)}
                         </span>
                       )}
                       <span

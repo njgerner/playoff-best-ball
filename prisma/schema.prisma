@@ -15,15 +15,16 @@ model Owner {
 }
 
 model Player {
-  id        String        @id @default(cuid())
-  name      String
-  position  Position
-  team      String?
-  espnId    String?       @unique
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  rosters   Roster[]
-  scores    PlayerScore[]
+  id          String             @id @default(cuid())
+  name        String
+  position    Position
+  team        String?
+  espnId      String?            @unique
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  rosters     Roster[]
+  scores      PlayerScore[]
+  projections PlayerProjection[]
 
   @@unique([name, position])
 }
@@ -114,4 +115,39 @@ enum RosterSlot {
   FLEX
   K
   DST
+}
+
+model PlayerProjection {
+  id              String   @id @default(cuid())
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId        String
+  week            Int      // 1=WC, 2=DIV, 3=CONF, 5=SB
+  year            Int
+  projectedPoints Float    @default(0)
+  teamWinProb     Float?   // 0-1 probability team wins/advances
+  expectedValue   Float?   // projectedPoints * teamWinProb
+  breakdown       Json?    // Projected stat breakdown
+  source          String   @default("calculated") // calculated, manual, etc.
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([playerId, week, year])
+  @@index([year, week])
+}
+
+model TeamOdds {
+  id        String   @id @default(cuid())
+  team      String   // NFL team abbreviation
+  week      Int
+  year      Int
+  opponent  String   // Opponent team abbreviation
+  winProb   Float    // 0-1 implied probability
+  moneyline Int?     // Raw American odds
+  source    String   @default("the-odds-api")
+  gameTime  DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([team, week, year])
+  @@index([year, week])
 }
