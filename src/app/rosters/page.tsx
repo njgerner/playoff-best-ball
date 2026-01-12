@@ -1,5 +1,6 @@
 import prisma from "@/lib/db";
 import { RosterCard } from "@/components/roster-card";
+import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 
 // Placeholder data matching your spreadsheet
 const PLACEHOLDER_ROSTERS = [
@@ -123,14 +124,14 @@ async function getRosterData() {
       include: {
         rosters: {
           where: {
-            year: new Date().getFullYear(),
+            year: CURRENT_SEASON_YEAR,
           },
           include: {
             player: {
               include: {
                 scores: {
                   where: {
-                    year: new Date().getFullYear(),
+                    year: CURRENT_SEASON_YEAR,
                   },
                 },
               },

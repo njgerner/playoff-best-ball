@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        year: new Date().getFullYear(),
+        year: CURRENT_SEASON_YEAR,
         weeks: [1, 2, 3, 5],
       }),
     });

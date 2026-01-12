@@ -2,10 +2,32 @@
 
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+
+interface SyncResult {
+  success: boolean;
+  data?: {
+    gamesFound: number;
+    playersFromEspn: string[];
+    defensesFromEspn: string[];
+    matchedPlayers: string[];
+    unmatchedPlayers: string[];
+    scoresUpdated: number;
+    errors: string[];
+  };
+  logs?: string[];
+  meta?: {
+    year: number;
+    weeks: number[];
+    syncedAt: string;
+  };
+  error?: string;
+  message?: string;
+}
 
 export default function AdminPage() {
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<string | null>(null);
+  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
   const [liveScores, setLiveScores] = useState<Record<string, unknown> | null>(null);
   const [loadingScores, setLoadingScores] = useState(false);
 
@@ -18,15 +40,18 @@ export default function AdminPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          year: new Date().getFullYear(),
+          year: CURRENT_SEASON_YEAR,
           weeks: [1, 2, 3, 5],
         }),
       });
 
       const result = await response.json();
-      setSyncResult(JSON.stringify(result, null, 2));
+      setSyncResult(result);
     } catch (error) {
-      setSyncResult(`Error: ${error instanceof Error ? error.message : "Unknown error"}`);
+      setSyncResult({
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
     } finally {
       setSyncing(false);
     }
@@ -72,9 +97,95 @@ export default function AdminPage() {
             </button>
 
             {syncResult && (
-              <pre className="bg-[rgba(0,0,0,0.3)] p-4 rounded-lg text-xs overflow-auto max-h-64 text-[var(--chalk-white)] font-[var(--font-chalk-mono)]">
-                {syncResult}
-              </pre>
+              <div className="space-y-4">
+                {/* Summary */}
+                <div
+                  className={`p-3 rounded-lg ${syncResult.success ? "bg-green-900/30 border border-green-500/30" : "bg-red-900/30 border border-red-500/30"}`}
+                >
+                  <div className="font-bold text-sm">
+                    {syncResult.success ? "Sync Complete" : "Sync Failed"}
+                  </div>
+                  {syncResult.data && (
+                    <div className="text-xs mt-2 space-y-1">
+                      <div>Games found: {syncResult.data.gamesFound}</div>
+                      <div>ESPN players: {syncResult.data.playersFromEspn.length}</div>
+                      <div>Matched: {syncResult.data.matchedPlayers.length}</div>
+                      <div>Unmatched: {syncResult.data.unmatchedPlayers.length}</div>
+                      <div>Scores updated: {syncResult.data.scoresUpdated}</div>
+                      <div>Errors: {syncResult.data.errors.length}</div>
+                    </div>
+                  )}
+                  {syncResult.error && (
+                    <div className="text-xs text-red-400 mt-2">{syncResult.error}</div>
+                  )}
+                </div>
+
+                {/* Matched Players */}
+                {syncResult.data?.matchedPlayers && syncResult.data.matchedPlayers.length > 0 && (
+                  <div>
+                    <div className="text-xs font-bold text-green-400 mb-1">
+                      Matched Players ({syncResult.data.matchedPlayers.length})
+                    </div>
+                    <div className="bg-[rgba(0,0,0,0.3)] p-2 rounded text-xs max-h-32 overflow-auto">
+                      {syncResult.data.matchedPlayers.map((p, i) => (
+                        <div key={i} className="text-green-300">
+                          {p}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Unmatched Players */}
+                {syncResult.data?.unmatchedPlayers &&
+                  syncResult.data.unmatchedPlayers.length > 0 && (
+                    <div>
+                      <div className="text-xs font-bold text-yellow-400 mb-1">
+                        Unmatched Players ({syncResult.data.unmatchedPlayers.length})
+                      </div>
+                      <div className="bg-[rgba(0,0,0,0.3)] p-2 rounded text-xs max-h-32 overflow-auto">
+                        {syncResult.data.unmatchedPlayers.slice(0, 50).map((p, i) => (
+                          <div key={i} className="text-yellow-300">
+                            {p}
+                          </div>
+                        ))}
+                        {syncResult.data.unmatchedPlayers.length > 50 && (
+                          <div className="text-[var(--chalk-muted)]">
+                            ...and {syncResult.data.unmatchedPlayers.length - 50} more
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                {/* Errors */}
+                {syncResult.data?.errors && syncResult.data.errors.length > 0 && (
+                  <div>
+                    <div className="text-xs font-bold text-red-400 mb-1">
+                      Errors ({syncResult.data.errors.length})
+                    </div>
+                    <div className="bg-[rgba(0,0,0,0.3)] p-2 rounded text-xs max-h-32 overflow-auto">
+                      {syncResult.data.errors.map((e, i) => (
+                        <div key={i} className="text-red-300">
+                          {e}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Full Logs (collapsible) */}
+                {syncResult.logs && (
+                  <details className="text-xs">
+                    <summary className="cursor-pointer text-[var(--chalk-muted)] hover:text-[var(--chalk-white)]">
+                      View full logs ({syncResult.logs.length} entries)
+                    </summary>
+                    <pre className="bg-[rgba(0,0,0,0.3)] p-4 rounded-lg mt-2 overflow-auto max-h-64 text-[var(--chalk-white)] font-mono">
+                      {syncResult.logs.join("\n")}
+                    </pre>
+                  </details>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

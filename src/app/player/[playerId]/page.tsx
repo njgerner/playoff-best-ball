@@ -3,6 +3,7 @@ import prisma from "@/lib/db";
 import { ScoringBreakdown } from "@/components/scoring-breakdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notFound } from "next/navigation";
+import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 
 const WEEK_LABELS: Record<number, string> = {
   1: "Wild Card Round",
@@ -21,11 +22,11 @@ async function getPlayerData(playerId: string) {
       where: { id: playerId },
       include: {
         scores: {
-          where: { year: new Date().getFullYear() },
+          where: { year: CURRENT_SEASON_YEAR },
           orderBy: { week: "asc" },
         },
         rosters: {
-          where: { year: new Date().getFullYear() },
+          where: { year: CURRENT_SEASON_YEAR },
           include: { owner: true },
         },
       },
