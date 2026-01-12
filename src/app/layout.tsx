@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Fredoka, Patrick_Hand } from "next/font/google";
 import Link from "next/link";
+import { MobileNav, DesktopNav } from "@/components/mobile-nav";
 import "./globals.css";
 
 const fredoka = Fredoka({
@@ -41,14 +42,8 @@ export default function RootLayout({
                   Playoff Best Ball
                 </Link>
               </div>
-              <div className="flex items-center space-x-1">
-                <NavLink href="/">Live</NavLink>
-                <NavLink href="/projections">Projections</NavLink>
-                <NavLink href="/schedule">Schedule</NavLink>
-                <NavLink href="/rosters">Rosters</NavLink>
-                <NavLink href="/scoring">Scoring</NavLink>
-                <NavLink href="/admin">Admin</NavLink>
-              </div>
+              <DesktopNav />
+              <MobileNav />
             </div>
           </div>
         </nav>
@@ -72,17 +67,5 @@ export default function RootLayout({
         </footer>
       </body>
     </html>
-  );
-}
-
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
-  return (
-    <Link
-      href={href}
-      className="text-[var(--chalk-white)] hover:text-[var(--chalk-pink)] px-3 py-2 text-sm font-medium transition-colors chalk-text"
-      style={{ fontFamily: "var(--font-chalk)" }}
-    >
-      {children}
-    </Link>
   );
 }

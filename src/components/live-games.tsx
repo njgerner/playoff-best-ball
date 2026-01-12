@@ -277,7 +277,7 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
   return (
     <div className="chalk-box overflow-hidden">
       {/* Game Header */}
-      <div className="p-4 border-b border-[rgba(255,255,255,0.1)]">
+      <div className="p-3 sm:p-4 border-b border-[rgba(255,255,255,0.1)]">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs text-[var(--chalk-muted)]">
             {WEEK_LABELS[game.week] || `Week ${game.week}`}
@@ -286,12 +286,12 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
         </div>
 
         {/* Scoreboard */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between gap-1 sm:gap-2">
           {/* Away Team */}
-          <div className="flex items-center gap-3">
-            <div className="text-center">
+          <div className="flex items-center gap-1 sm:gap-3 min-w-0">
+            <div className="text-center min-w-0">
               <div
-                className={`text-lg font-bold ${
+                className={`text-base sm:text-lg font-bold truncate ${
                   awayEliminated
                     ? "text-red-400/50"
                     : awayWinning
@@ -302,10 +302,12 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
                 {game.awayTeam.abbreviation}
               </div>
               {awayEliminated && <div className="text-xs text-red-400 font-medium">OUT</div>}
-              <div className="text-xs text-[var(--chalk-muted)]">{game.awayTeam.displayName}</div>
+              <div className="text-xs text-[var(--chalk-muted)] hidden sm:block">
+                {game.awayTeam.displayName}
+              </div>
             </div>
             <div
-              className={`text-3xl font-bold chalk-score ${
+              className={`text-2xl sm:text-3xl font-bold chalk-score ${
                 awayEliminated
                   ? "text-[var(--chalk-muted)]"
                   : awayWinning
@@ -318,23 +320,25 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
           </div>
 
           {/* Game Info */}
-          <div className="text-center px-4">
+          <div className="text-center px-1 sm:px-4 flex-shrink-0">
             {isLive ? (
               <div className="text-[var(--chalk-green)]">
-                <div className="text-sm font-medium">{formatQuarter(game.status.period)}</div>
-                <div className="text-lg font-bold">{game.status.displayClock}</div>
+                <div className="text-xs sm:text-sm font-medium">
+                  {formatQuarter(game.status.period)}
+                </div>
+                <div className="text-sm sm:text-lg font-bold">{game.status.displayClock}</div>
               </div>
             ) : game.status.completed ? (
-              <div className="text-[var(--chalk-muted)] text-sm">Final</div>
+              <div className="text-[var(--chalk-muted)] text-xs sm:text-sm">Final</div>
             ) : (
               <div className="text-[var(--chalk-muted)] text-xs">{game.status.detail}</div>
             )}
           </div>
 
           {/* Home Team */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 sm:gap-3 min-w-0">
             <div
-              className={`text-3xl font-bold chalk-score ${
+              className={`text-2xl sm:text-3xl font-bold chalk-score ${
                 homeEliminated
                   ? "text-[var(--chalk-muted)]"
                   : homeWinning
@@ -344,9 +348,9 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
             >
               {game.homeTeam.score}
             </div>
-            <div className="text-center">
+            <div className="text-center min-w-0">
               <div
-                className={`text-lg font-bold ${
+                className={`text-base sm:text-lg font-bold truncate ${
                   homeEliminated
                     ? "text-red-400/50"
                     : homeWinning
@@ -357,7 +361,9 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
                 {game.homeTeam.abbreviation}
               </div>
               {homeEliminated && <div className="text-xs text-red-400 font-medium">OUT</div>}
-              <div className="text-xs text-[var(--chalk-muted)]">{game.homeTeam.displayName}</div>
+              <div className="text-xs text-[var(--chalk-muted)] hidden sm:block">
+                {game.homeTeam.displayName}
+              </div>
             </div>
           </div>
         </div>
@@ -365,7 +371,7 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
 
       {/* Players Section - only show if there are rostered players from either team */}
       {(awayPlayers.length > 0 || homePlayers.length > 0) && (
-        <div className="p-3">
+        <div className="p-2 sm:p-3">
           <div className="text-xs font-medium text-[var(--chalk-muted)] mb-3 uppercase tracking-wider">
             Rostered Players - Fantasy Scoring
           </div>
@@ -498,19 +504,22 @@ export function LiveGames() {
           <button
             key={week}
             onClick={() => setSelectedWeek(week)}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+            className={`px-3 sm:px-4 py-2 rounded text-sm font-medium transition-colors min-h-[44px] ${
               selectedWeek === week
                 ? "bg-[var(--chalk-blue)] text-white"
                 : "bg-[rgba(255,255,255,0.1)] text-[var(--chalk-muted)] hover:bg-[rgba(255,255,255,0.15)]"
             }`}
           >
-            {WEEK_LABELS[week] || `Week ${week}`}
+            <span className="hidden sm:inline">{WEEK_LABELS[week] || `Week ${week}`}</span>
+            <span className="sm:hidden">
+              {week === 5 ? "SB" : week === 1 ? "WC" : week === 2 ? "DIV" : "CONF"}
+            </span>
           </button>
         ))}
         <button
           onClick={() => fetchGames(selectedWeek)}
           disabled={loading}
-          className="ml-auto chalk-button chalk-button-blue text-sm px-3 py-1"
+          className="ml-auto chalk-button chalk-button-blue text-sm px-4 py-2 min-h-[44px]"
         >
           {loading ? "..." : "Refresh"}
         </button>
@@ -544,7 +553,7 @@ export function LiveGames() {
       )}
 
       {/* Games Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
         {data?.games.map((game) => (
           <GameCard key={game.eventId} game={game} eliminatedTeams={data.eliminatedTeams || []} />
         ))}

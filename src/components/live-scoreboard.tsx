@@ -188,74 +188,53 @@ export function LiveScoreboard() {
   const sortedRosters = data?.rosters?.slice().sort((a, b) => b.totalPoints - a.totalPoints) || [];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-bold text-[var(--chalk-yellow)] chalk-text">
-            Live Scoreboard
+    <div className="space-y-4 sm:space-y-6">
+      {/* Mobile-first Header - compact with inline refresh */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <h1 className="text-xl sm:text-3xl md:text-4xl font-bold text-[var(--chalk-yellow)] chalk-text">
+            Live
           </h1>
-          <p className="text-sm text-[var(--chalk-muted)] mt-1">
-            {lastFetch ? `Last updated: ${lastFetch.toLocaleTimeString()}` : "Loading..."}
-          </p>
+          {autoRefresh && (
+            <span className="text-xs text-[var(--chalk-muted)] tabular-nums">{countdown}s</span>
+          )}
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Show projections toggle */}
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={showProjections}
-              onChange={(e) => setShowProjections(e.target.checked)}
-              className="w-4 h-4 rounded"
-            />
-            <span className="text-[var(--chalk-blue)]">Show EV</span>
-          </label>
-
-          {/* Auto-refresh toggle */}
-          <label className="flex items-center gap-2 text-sm cursor-pointer">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="w-4 h-4 rounded"
-            />
-            <span className="text-[var(--chalk-muted)]">
-              Auto-refresh {autoRefresh && `(${countdown}s)`}
-            </span>
-          </label>
-
-          {/* Manual refresh */}
+        <div className="flex items-center gap-2">
+          {/* Quick refresh button - always visible */}
           <button
             onClick={fetchScores}
             disabled={loading}
-            className="chalk-button chalk-button-blue text-sm px-3 py-1"
+            className="p-2 rounded-lg bg-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.15)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+            aria-label="Refresh"
           >
-            {loading ? "..." : "Refresh"}
-          </button>
-
-          {/* Sync from ESPN */}
-          <button
-            onClick={handleSync}
-            disabled={syncing}
-            className="chalk-button chalk-button-green text-sm px-3 py-1"
-          >
-            {syncing ? "Syncing..." : "Sync ESPN"}
+            <svg
+              className={`w-5 h-5 text-[var(--chalk-blue)] ${loading ? "animate-spin" : ""}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
           </button>
         </div>
       </div>
 
       {/* Error */}
       {error && (
-        <div className="bg-red-900/30 border border-red-500/30 p-4 rounded-lg text-red-400">
+        <div className="bg-red-900/30 border border-red-500/30 p-3 rounded-lg text-red-400 text-sm">
           {error}
         </div>
       )}
 
-      {/* Leaderboard Summary */}
-      <div className="chalk-box p-4">
-        <h2 className="text-lg font-bold text-[var(--chalk-white)] mb-3 chalk-text">Leaderboard</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2">
+      {/* Leaderboard Summary - THE MAIN CONTENT */}
+      <div className="chalk-box p-3 sm:p-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-2">
           {sortedRosters.map((roster, index) => {
             const pointChange =
               roster.previousTotal !== undefined ? roster.totalPoints - roster.previousTotal : null;
@@ -272,7 +251,9 @@ export function LiveScoreboard() {
                 }`}
               >
                 <div className="text-xs text-[var(--chalk-muted)]">#{index + 1}</div>
-                <div className="font-bold text-[var(--chalk-white)]">{roster.ownerName}</div>
+                <div className="font-bold text-[var(--chalk-white)] truncate text-sm sm:text-base">
+                  {roster.ownerName}
+                </div>
                 <div className="text-lg font-bold text-[var(--chalk-green)] chalk-score">
                   {roster.totalPoints.toFixed(1)}
                 </div>
@@ -293,10 +274,46 @@ export function LiveScoreboard() {
             );
           })}
         </div>
+
+        {/* Compact controls row - inside the leaderboard box */}
+        <div className="mt-3 pt-3 border-t border-dashed border-[var(--chalk-muted)]/30 flex flex-wrap items-center justify-between gap-2 text-xs">
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={showProjections}
+                onChange={(e) => setShowProjections(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <span className="text-[var(--chalk-blue)]">EV</span>
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                className="w-4 h-4 rounded"
+              />
+              <span className="text-[var(--chalk-muted)]">Auto</span>
+            </label>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[var(--chalk-muted)]">
+              {lastFetch ? lastFetch.toLocaleTimeString() : "..."}
+            </span>
+            <button
+              onClick={handleSync}
+              disabled={syncing}
+              className="text-[var(--chalk-green)] hover:underline disabled:opacity-50"
+            >
+              {syncing ? "Syncing..." : "Sync ESPN"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* All Rosters Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
         {sortedRosters.map((roster, index) => (
           <div key={roster.ownerId} className="chalk-box p-4">
             <div className="flex items-center justify-between mb-3">

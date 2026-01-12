@@ -131,7 +131,8 @@ body {
   background: transparent;
   border: 2px solid currentColor;
   border-radius: 4px;
-  padding: 0.5rem 1rem;
+  padding: 0.625rem 1rem;
+  min-height: 44px;
   font-family: inherit;
   font-weight: 600;
   cursor: pointer;

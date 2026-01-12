@@ -128,7 +128,8 @@ function BracketGameCard({
   const awayEliminated = eliminatedTeams.includes(game.awayTeam.abbreviation.toUpperCase());
   const homeEliminated = eliminatedTeams.includes(game.homeTeam.abbreviation.toUpperCase());
 
-  const sizeClasses = size === "large" ? "min-w-[180px] p-3" : "min-w-[140px] p-2";
+  const sizeClasses =
+    size === "large" ? "w-full lg:min-w-[180px] p-3" : "w-full lg:min-w-[140px] p-2";
   const teamTextSize = size === "large" ? "text-sm" : "text-xs";
   const scoreTextSize = size === "large" ? "text-lg" : "text-sm";
 
@@ -450,9 +451,9 @@ export function PlayoffBracket() {
       </div>
 
       {/* Mobile Layout - Week by Week */}
-      <div className="lg:hidden space-y-6">
+      <div className="lg:hidden space-y-4 sm:space-y-6">
         {/* Wild Card */}
-        <div className="chalk-box p-4">
+        <div className="chalk-box p-3 sm:p-4">
           <h3 className="text-lg font-bold text-[var(--chalk-blue)] mb-4">Wild Card Round</h3>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -483,9 +484,9 @@ export function PlayoffBracket() {
         </div>
 
         {/* Divisional */}
-        <div className="chalk-box p-4">
+        <div className="chalk-box p-3 sm:p-4">
           <h3 className="text-lg font-bold text-[var(--chalk-blue)] mb-4">Divisional Round</h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <div className="text-xs font-bold text-red-400 mb-2">AFC</div>
               <div className="space-y-2">
@@ -514,11 +515,11 @@ export function PlayoffBracket() {
         </div>
 
         {/* Conference Championships */}
-        <div className="chalk-box p-4">
+        <div className="chalk-box p-3 sm:p-4">
           <h3 className="text-lg font-bold text-[var(--chalk-blue)] mb-4">
             Conference Championships
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
             <div>
               <div className="text-xs font-bold text-red-400 mb-2">AFC Championship</div>
               {afcChampionship.length > 0 ? (
@@ -543,7 +544,7 @@ export function PlayoffBracket() {
         </div>
 
         {/* Super Bowl */}
-        <div className="chalk-box p-4 border-2 border-[var(--chalk-yellow)]">
+        <div className="chalk-box p-3 sm:p-4 border-2 border-[var(--chalk-yellow)]">
           <h3 className="text-lg font-bold text-[var(--chalk-yellow)] mb-4 text-center">
             Super Bowl
           </h3>
