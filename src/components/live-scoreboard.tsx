@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import Link from "next/link";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+import { GamesToday } from "./games-today";
 
 interface PlayerScore {
   id: string;
@@ -62,10 +63,13 @@ export function LiveScoreboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastFetch, setLastFetch] = useState<Date | null>(null);
+  const [lastSync, setLastSync] = useState<Date | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [countdown, setCountdown] = useState(60);
   const [showProjections, setShowProjections] = useState(false);
+  const [hasLiveGames, setHasLiveGames] = useState(false);
+  const isInitialMount = useRef(true);
 
   const fetchScores = useCallback(async () => {
     try {
@@ -142,39 +146,64 @@ export function LiveScoreboard() {
     }
   }, [data?.rosters]);
 
-  const handleSync = async () => {
-    setSyncing(true);
-    try {
-      await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          year: CURRENT_SEASON_YEAR,
-          weeks: [1, 2, 3, 5],
-        }),
-      });
-      // Refresh scores after sync
-      await fetchScores();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sync failed");
-    } finally {
-      setSyncing(false);
-    }
-  };
+  const handleSync = useCallback(
+    async (silent = false) => {
+      if (!silent) setSyncing(true);
+      try {
+        const response = await fetch("/api/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            year: CURRENT_SEASON_YEAR,
+            weeks: [1, 2, 3, 5],
+          }),
+        });
+        if (response.ok) {
+          setLastSync(new Date());
+        }
+        // Refresh scores after sync
+        await fetchScores();
+      } catch (err) {
+        if (!silent) {
+          setError(err instanceof Error ? err.message : "Sync failed");
+        }
+      } finally {
+        if (!silent) setSyncing(false);
+      }
+    },
+    [fetchScores]
+  );
 
-  // Initial fetch
-  useEffect(() => {
-    fetchScores();
+  // Callback for GamesToday to report live game status
+  const handleLiveGamesChange = useCallback((hasLive: boolean) => {
+    setHasLiveGames(hasLive);
   }, []);
 
-  // Auto-refresh every 60 seconds
+  // Initial fetch and sync
+  useEffect(() => {
+    // On initial mount, do a full sync to get fresh data
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      handleSync(true); // Silent sync on mount
+    } else {
+      fetchScores();
+    }
+  }, []);
+
+  // Auto-refresh: sync with ESPN during live games, otherwise just fetch cached data
   useEffect(() => {
     if (!autoRefresh) return;
 
     const interval = setInterval(() => {
       setCountdown((prev) => {
         if (prev <= 1) {
-          fetchScores();
+          if (hasLiveGames) {
+            // During live games, sync with ESPN for fresh data
+            handleSync(true);
+          } else {
+            // No live games, just read cached data
+            fetchScores();
+          }
           return 60;
         }
         return prev - 1;
@@ -182,34 +211,72 @@ export function LiveScoreboard() {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [autoRefresh, fetchScores]);
+  }, [autoRefresh, fetchScores, handleSync, hasLiveGames]);
 
   // Sort rosters by total points
   const sortedRosters = data?.rosters?.slice().sort((a, b) => b.totalPoints - a.totalPoints) || [];
 
+  // Get all rostered teams for the GamesToday component
+  const rosteredTeams = useMemo(() => {
+    const teams = new Set<string>();
+    data?.rosters?.forEach((roster) => {
+      roster.players.forEach((player) => {
+        if (player.team) {
+          teams.add(player.team.toUpperCase());
+        }
+      });
+    });
+    return teams;
+  }, [data?.rosters]);
+
   return (
     <div className="space-y-4 sm:space-y-6">
-      {/* Mobile-first Header - compact with inline refresh */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 min-w-0">
+      {/* Header with sync status */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex items-center gap-3">
           <h1 className="text-xl sm:text-3xl md:text-4xl font-bold text-[var(--chalk-yellow)] chalk-text">
             Live
           </h1>
-          {autoRefresh && (
-            <span className="text-xs text-[var(--chalk-muted)] tabular-nums">{countdown}s</span>
+          {hasLiveGames && (
+            <span className="flex items-center gap-1.5 text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded-full">
+              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+              Games in progress
+            </span>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          {/* Quick refresh button - always visible */}
+        <div className="flex items-center gap-3">
+          {/* Sync status indicator */}
+          <div className="flex flex-col items-end text-xs">
+            {hasLiveGames ? (
+              <span className="text-green-400 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+                Auto-syncing in {countdown}s
+              </span>
+            ) : (
+              <span className="text-[var(--chalk-muted)]">Cache refresh in {countdown}s</span>
+            )}
+            {lastSync && (
+              <span className="text-[var(--chalk-muted)]">
+                ESPN synced {lastSync.toLocaleTimeString()}
+              </span>
+            )}
+          </div>
+
+          {/* Manual sync button */}
           <button
-            onClick={fetchScores}
-            disabled={loading}
-            className="p-2 rounded-lg bg-[rgba(255,255,255,0.1)] hover:bg-[rgba(255,255,255,0.15)] transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
-            aria-label="Refresh"
+            onClick={() => handleSync(false)}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-[var(--chalk-blue)] hover:bg-[var(--chalk-blue)]/80 text-white text-sm font-medium transition-colors disabled:opacity-50"
           >
             <svg
-              className={`w-5 h-5 text-[var(--chalk-blue)] ${loading ? "animate-spin" : ""}`}
+              className={`w-4 h-4 ${syncing ? "animate-spin" : ""}`}
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -221,9 +288,53 @@ export function LiveScoreboard() {
                 d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
               />
             </svg>
+            {syncing ? "Syncing..." : "Sync ESPN"}
+          </button>
+
+          {/* Auto-refresh toggle */}
+          <button
+            onClick={() => setAutoRefresh(!autoRefresh)}
+            className={`p-2 rounded-lg transition-colors ${
+              autoRefresh
+                ? "bg-green-900/30 text-green-400"
+                : "bg-[rgba(255,255,255,0.1)] text-[var(--chalk-muted)]"
+            }`}
+            title={autoRefresh ? "Auto-sync enabled" : "Auto-sync disabled"}
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {autoRefresh ? (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
+              ) : (
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              )}
+            </svg>
           </button>
         </div>
       </div>
+
+      {/* Info banner explaining sync behavior */}
+      {hasLiveGames && (
+        <div className="bg-green-900/20 border border-green-500/30 rounded-lg px-4 py-2 text-xs text-green-300 flex items-center gap-2">
+          <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+            <path
+              fillRule="evenodd"
+              d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <span>Live games detected - scores auto-sync with ESPN every 60 seconds</span>
+        </div>
+      )}
 
       {/* Error */}
       {error && (
@@ -231,6 +342,13 @@ export function LiveScoreboard() {
           {error}
         </div>
       )}
+
+      {/* Games Today - Current/Upcoming Games */}
+      <GamesToday
+        rosteredTeams={rosteredTeams}
+        onRefresh={fetchScores}
+        onLiveGamesChange={handleLiveGamesChange}
+      />
 
       {/* Leaderboard Summary - THE MAIN CONTENT */}
       <div className="chalk-box p-3 sm:p-4">
@@ -298,15 +416,20 @@ export function LiveScoreboard() {
             </label>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-[var(--chalk-muted)]">
-              {lastFetch ? lastFetch.toLocaleTimeString() : "..."}
-            </span>
+            {hasLiveGames ? (
+              <span className="text-green-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
+                Live sync {countdown}s
+              </span>
+            ) : (
+              <span className="text-[var(--chalk-muted)]">Refresh {countdown}s</span>
+            )}
             <button
-              onClick={handleSync}
+              onClick={() => handleSync(false)}
               disabled={syncing}
-              className="text-[var(--chalk-green)] hover:underline disabled:opacity-50"
+              className="text-[var(--chalk-blue)] hover:underline disabled:opacity-50"
             >
-              {syncing ? "Syncing..." : "Sync ESPN"}
+              {syncing ? "Syncing..." : "Sync Now"}
             </button>
           </div>
         </div>

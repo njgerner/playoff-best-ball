@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+import { TeamLogo } from "./team-logo";
 
 interface BracketGame {
   eventId: string;
@@ -153,6 +154,10 @@ function BracketGameCard({
         className={`flex items-center justify-between py-1 ${awayEliminated ? "opacity-40" : ""}`}
       >
         <div className="flex items-center gap-1.5">
+          <TeamLogo
+            abbreviation={game.awayTeam.abbreviation}
+            size={size === "large" ? "sm" : "xs"}
+          />
           <span
             className={`${teamTextSize} font-bold ${
               game.status.completed && awayWinning
@@ -186,6 +191,10 @@ function BracketGameCard({
         className={`flex items-center justify-between py-1 ${homeEliminated ? "opacity-40" : ""}`}
       >
         <div className="flex items-center gap-1.5">
+          <TeamLogo
+            abbreviation={game.homeTeam.abbreviation}
+            size={size === "large" ? "sm" : "xs"}
+          />
           <span
             className={`${teamTextSize} font-bold ${
               game.status.completed && homeWinning
@@ -231,57 +240,66 @@ export function PlayoffBracket() {
   const [data, setData] = useState<BracketData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [countdown, setCountdown] = useState(60);
 
-  useEffect(() => {
-    async function fetchAllGames() {
-      try {
-        setLoading(true);
-        const weeks = [1, 2, 3, 5];
-        const allGames: BracketGame[] = [];
+  const fetchAllGames = useCallback(async () => {
+    try {
+      setLoading(true);
+      const weeks = [1, 2, 3, 5];
+      const allGames: BracketGame[] = [];
 
-        for (const week of weeks) {
-          const response = await fetch(`/api/games?year=${CURRENT_SEASON_YEAR}&week=${week}`);
-          if (!response.ok) continue;
-          const result = await response.json();
+      for (const week of weeks) {
+        const response = await fetch(`/api/games?year=${CURRENT_SEASON_YEAR}&week=${week}`);
+        if (!response.ok) continue;
+        const result = await response.json();
 
-          // Add conference info to each game
-          const gamesWithConf = result.games.map((g: BracketGame) => ({
-            ...g,
-            conference: getConference(g.awayTeam.abbreviation, g.homeTeam.abbreviation),
-          }));
-          allGames.push(...gamesWithConf);
-        }
-
-        // Get eliminated teams from the last response
-        const lastResponse = await fetch(`/api/games?year=${CURRENT_SEASON_YEAR}&week=1`);
-        const lastResult = await lastResponse.json();
-
-        setData({
-          games: allGames,
-          eliminatedTeams: lastResult.eliminatedTeams || [],
-          lastUpdated: new Date().toISOString(),
-        });
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Failed to fetch games");
-      } finally {
-        setLoading(false);
+        // Add conference info to each game
+        const gamesWithConf = result.games.map((g: BracketGame) => ({
+          ...g,
+          conference: getConference(g.awayTeam.abbreviation, g.homeTeam.abbreviation),
+        }));
+        allGames.push(...gamesWithConf);
       }
-    }
 
-    fetchAllGames();
+      // Get eliminated teams from the last response
+      const lastResponse = await fetch(`/api/games?year=${CURRENT_SEASON_YEAR}&week=1`);
+      const lastResult = await lastResponse.json();
+
+      setData({
+        games: allGames,
+        eliminatedTeams: lastResult.eliminatedTeams || [],
+        lastUpdated: new Date().toISOString(),
+      });
+      setCountdown(60);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch games");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  // Auto-refresh every 60 seconds
+  // Initial fetch
+  useEffect(() => {
+    fetchAllGames();
+  }, [fetchAllGames]);
+
+  // Auto-refresh every 60 seconds during live games (without page reload)
   useEffect(() => {
     const hasLiveGames = data?.games.some((g) => g.status.state === "in");
     if (!hasLiveGames) return;
 
     const interval = setInterval(() => {
-      window.location.reload();
-    }, 60000);
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          fetchAllGames();
+          return 60;
+        }
+        return prev - 1;
+      });
+    }, 1000);
 
     return () => clearInterval(interval);
-  }, [data]);
+  }, [data, fetchAllGames]);
 
   if (loading) {
     return (
@@ -572,10 +590,22 @@ export function PlayoffBracket() {
         </div>
       )}
 
-      {/* Last Updated */}
+      {/* Last Updated / Live Indicator */}
       {data.lastUpdated && (
-        <div className="text-xs text-[var(--chalk-muted)] text-center">
-          Last updated: {new Date(data.lastUpdated).toLocaleTimeString()}
+        <div className="flex items-center justify-center gap-3 text-xs text-[var(--chalk-muted)]">
+          {data.games.some((g) => g.status.state === "in") && (
+            <span className="flex items-center gap-1.5 text-green-400">
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+              Live - refreshing in {countdown}s
+            </span>
+          )}
+          <span>Updated: {new Date(data.lastUpdated).toLocaleTimeString()}</span>
+          <button
+            onClick={() => fetchAllGames()}
+            className="text-[var(--chalk-blue)] hover:underline"
+          >
+            Refresh
+          </button>
         </div>
       )}
     </div>
