@@ -221,6 +221,7 @@ export interface PlayoffGame {
   week: number;
   name: string;
   shortName: string;
+  date: string;
   status: GameStatus;
   homeTeam: GameTeam;
   awayTeam: GameTeam;

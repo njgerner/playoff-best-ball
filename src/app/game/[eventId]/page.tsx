@@ -1,9 +1,25 @@
 import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { fetchScoreboard, fetchGameSummary, getEliminatedTeams } from "@/lib/espn/client";
 import { parsePlayerStats, parseDefenseStats, calculateTotalPoints } from "@/lib/espn";
 import prisma from "@/lib/db";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+
+// Server-side team logo helper (simpler than client component for SSR)
+function TeamLogoServer({ abbreviation, size = 48 }: { abbreviation: string; size?: number }) {
+  const logoUrl = `https://a.espncdn.com/i/teamlogos/nfl/500/${abbreviation.toLowerCase()}.png`;
+  return (
+    <Image
+      src={logoUrl}
+      alt={`${abbreviation} logo`}
+      width={size}
+      height={size}
+      className="object-contain"
+      unoptimized
+    />
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -281,11 +297,17 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
   // Get eliminated teams
   const eliminatedTeams = await getEliminatedTeams();
 
-  // Get rostered players
+  // Get rostered players with their scores
   const rosters = await prisma.roster.findMany({
     where: { year: CURRENT_SEASON_YEAR },
     include: {
-      player: true,
+      player: {
+        include: {
+          scores: {
+            where: { year: CURRENT_SEASON_YEAR },
+          },
+        },
+      },
       owner: true,
     },
   });
@@ -298,6 +320,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
       ownerId: string;
       ownerName: string;
       rosterSlot: string;
+      position: string;
       team: string | null;
     }
   >();
@@ -308,6 +331,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
       ownerId: roster.owner.id,
       ownerName: roster.owner.name,
       rosterSlot: roster.rosterSlot,
+      position: roster.player.position,
       team: roster.player.team,
     });
   }
@@ -351,7 +375,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
           players.push({
             playerId: rosterInfo.playerId,
             playerName: player.name,
-            position: player.position || "FLEX",
+            position: rosterInfo.position,
             team: player.team || "",
             ownerId: rosterInfo.ownerId,
             ownerName: rosterInfo.ownerName,
@@ -414,6 +438,50 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
   const awayFantasyPts = awayPlayers.reduce((sum, p) => sum + p.points, 0);
   const homeFantasyPts = homePlayers.reduce((sum, p) => sum + p.points, 0);
 
+  // For pre-game: Get all rostered players on these teams with their playoff totals
+  interface PreGamePlayer {
+    id: string;
+    name: string;
+    position: string;
+    ownerName: string;
+    rosterSlot: string;
+    totalPoints: number;
+    gamesPlayed: number;
+    espnId: string | null;
+  }
+
+  const preGameAwayPlayers: PreGamePlayer[] = [];
+  const preGameHomePlayers: PreGamePlayer[] = [];
+
+  for (const roster of rosters) {
+    const playerTeam = roster.player.team?.toUpperCase();
+    if (!playerTeam) continue;
+
+    const totalPoints = roster.player.scores.reduce((sum, s) => sum + s.points, 0);
+    const gamesPlayed = roster.player.scores.length;
+
+    const playerInfo: PreGamePlayer = {
+      id: roster.player.id,
+      name: roster.player.name,
+      position: roster.player.position,
+      ownerName: roster.owner.name,
+      rosterSlot: roster.rosterSlot,
+      totalPoints,
+      gamesPlayed,
+      espnId: roster.player.espnId,
+    };
+
+    if (playerTeam === awayCompetitor.team.abbreviation.toUpperCase()) {
+      preGameAwayPlayers.push(playerInfo);
+    } else if (playerTeam === homeCompetitor.team.abbreviation.toUpperCase()) {
+      preGameHomePlayers.push(playerInfo);
+    }
+  }
+
+  // Sort by total points descending
+  preGameAwayPlayers.sort((a, b) => b.totalPoints - a.totalPoints);
+  preGameHomePlayers.sort((a, b) => b.totalPoints - a.totalPoints);
+
   const weekLabels: Record<number, string> = {
     1: "Wild Card",
     2: "Divisional",
@@ -459,11 +527,14 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
         </div>
 
         {/* Scoreboard */}
-        <div className="flex items-center justify-center gap-8">
+        <div className="flex items-center justify-center gap-4 sm:gap-8">
           {/* Away Team */}
-          <div className="text-center">
+          <div className="text-center flex-1 max-w-[200px]">
+            <div className="flex justify-center mb-2">
+              <TeamLogoServer abbreviation={awayCompetitor.team.abbreviation} size={64} />
+            </div>
             <div
-              className={`text-3xl font-bold mb-1 ${
+              className={`text-xl sm:text-3xl font-bold mb-1 ${
                 awayEliminated
                   ? "text-red-400/50"
                   : awayWinning && !isScheduled
@@ -474,12 +545,12 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
               {awayCompetitor.team.abbreviation}
             </div>
             {awayEliminated && <div className="text-xs text-red-400 font-medium mb-1">OUT</div>}
-            <div className="text-sm text-[var(--chalk-muted)]">
+            <div className="text-xs sm:text-sm text-[var(--chalk-muted)] truncate">
               {awayCompetitor.team.displayName}
             </div>
             {!isScheduled && (
               <div
-                className={`text-4xl font-bold mt-2 chalk-score ${
+                className={`text-3xl sm:text-5xl font-bold mt-2 chalk-score ${
                   awayWinning ? "text-[var(--chalk-green)]" : "text-[var(--chalk-white)]"
                 }`}
               >
@@ -489,20 +560,25 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
           </div>
 
           {/* Center Info */}
-          <div className="text-center px-8">
+          <div className="text-center px-2 sm:px-8 flex-shrink-0">
             {isLive && gameEvent.status.displayClock && (
               <div className="text-[var(--chalk-green)]">
-                <div className="text-lg font-medium">{formatQuarter(gameEvent.status.period)}</div>
-                <div className="text-2xl font-bold">{gameEvent.status.displayClock}</div>
+                <div className="text-sm sm:text-lg font-medium">
+                  {formatQuarter(gameEvent.status.period)}
+                </div>
+                <div className="text-lg sm:text-2xl font-bold">{gameEvent.status.displayClock}</div>
               </div>
             )}
-            {!isLive && <div className="text-[var(--chalk-muted)] text-xl">@</div>}
+            {!isLive && <div className="text-[var(--chalk-muted)] text-lg sm:text-xl">@</div>}
           </div>
 
           {/* Home Team */}
-          <div className="text-center">
+          <div className="text-center flex-1 max-w-[200px]">
+            <div className="flex justify-center mb-2">
+              <TeamLogoServer abbreviation={homeCompetitor.team.abbreviation} size={64} />
+            </div>
             <div
-              className={`text-3xl font-bold mb-1 ${
+              className={`text-xl sm:text-3xl font-bold mb-1 ${
                 homeEliminated
                   ? "text-red-400/50"
                   : homeWinning && !isScheduled
@@ -513,12 +589,12 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
               {homeCompetitor.team.abbreviation}
             </div>
             {homeEliminated && <div className="text-xs text-red-400 font-medium mb-1">OUT</div>}
-            <div className="text-sm text-[var(--chalk-muted)]">
+            <div className="text-xs sm:text-sm text-[var(--chalk-muted)] truncate">
               {homeCompetitor.team.displayName}
             </div>
             {!isScheduled && (
               <div
-                className={`text-4xl font-bold mt-2 chalk-score ${
+                className={`text-3xl sm:text-5xl font-bold mt-2 chalk-score ${
                   homeWinning ? "text-[var(--chalk-green)]" : "text-[var(--chalk-white)]"
                 }`}
               >
@@ -527,13 +603,33 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
             )}
           </div>
         </div>
+
+        {/* Game Info */}
+        <div className="mt-4 pt-4 border-t border-dashed border-[var(--chalk-muted)]/30 text-center text-xs text-[var(--chalk-muted)]">
+          {gameEvent.date && (
+            <span>
+              {new Date(gameEvent.date).toLocaleDateString("en-US", {
+                weekday: "long",
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}
+              {" at "}
+              {new Date(gameEvent.date).toLocaleTimeString("en-US", {
+                hour: "numeric",
+                minute: "2-digit",
+                timeZoneName: "short",
+              })}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Your Players Section */}
       {(awayPlayers.length > 0 || homePlayers.length > 0) && (
         <div className="chalk-box p-6">
           <h2 className="text-xl font-bold text-[var(--chalk-white)] mb-6">
-            Your Players in This Game
+            Rostered Players in This Game
           </h2>
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -544,14 +640,17 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
                   awayEliminated ? "bg-red-900/20" : "bg-[rgba(255,255,255,0.05)]"
                 }`}
               >
-                <span
-                  className={`text-lg font-bold ${
-                    awayEliminated ? "text-red-400" : "text-[var(--chalk-white)]"
-                  }`}
-                >
-                  {awayCompetitor.team.abbreviation}
-                  {awayEliminated && " - Eliminated"}
-                </span>
+                <div className="flex items-center gap-3">
+                  <TeamLogoServer abbreviation={awayCompetitor.team.abbreviation} size={32} />
+                  <span
+                    className={`text-lg font-bold ${
+                      awayEliminated ? "text-red-400" : "text-[var(--chalk-white)]"
+                    }`}
+                  >
+                    {awayCompetitor.team.abbreviation}
+                    {awayEliminated && " - Eliminated"}
+                  </span>
+                </div>
                 <span
                   className={`text-lg font-bold ${
                     awayEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-green)]"
@@ -580,14 +679,17 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
                   homeEliminated ? "bg-red-900/20" : "bg-[rgba(255,255,255,0.05)]"
                 }`}
               >
-                <span
-                  className={`text-lg font-bold ${
-                    homeEliminated ? "text-red-400" : "text-[var(--chalk-white)]"
-                  }`}
-                >
-                  {homeCompetitor.team.abbreviation}
-                  {homeEliminated && " - Eliminated"}
-                </span>
+                <div className="flex items-center gap-3">
+                  <TeamLogoServer abbreviation={homeCompetitor.team.abbreviation} size={32} />
+                  <span
+                    className={`text-lg font-bold ${
+                      homeEliminated ? "text-red-400" : "text-[var(--chalk-white)]"
+                    }`}
+                  >
+                    {homeCompetitor.team.abbreviation}
+                    {homeEliminated && " - Eliminated"}
+                  </span>
+                </div>
                 <span
                   className={`text-lg font-bold ${
                     homeEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-green)]"
@@ -621,10 +723,160 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
         </div>
       )}
 
-      {isScheduled && (
+      {/* Pre-Game: Rostered Players Preview */}
+      {isScheduled && (preGameAwayPlayers.length > 0 || preGameHomePlayers.length > 0) && (
+        <div className="chalk-box p-6">
+          <h2 className="text-xl font-bold text-[var(--chalk-white)] mb-2">
+            Rostered Players in This Game
+          </h2>
+          <p className="text-sm text-[var(--chalk-muted)] mb-6">
+            Game starts{" "}
+            {new Date(gameEvent.date).toLocaleString("en-US", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              timeZoneName: "short",
+            })}
+          </p>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Away Team */}
+            <div>
+              <div className="flex items-center gap-3 p-3 rounded-lg mb-4 bg-[rgba(255,255,255,0.05)]">
+                <TeamLogoServer abbreviation={awayCompetitor.team.abbreviation} size={32} />
+                <span className="text-lg font-bold text-[var(--chalk-white)]">
+                  {awayCompetitor.team.abbreviation}
+                </span>
+                <span className="text-sm text-[var(--chalk-muted)]">
+                  {preGameAwayPlayers.length} player{preGameAwayPlayers.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              {preGameAwayPlayers.length > 0 ? (
+                <div className="space-y-2">
+                  {preGameAwayPlayers.map((player) => (
+                    <Link
+                      key={player.id}
+                      href={`/player/${player.id}`}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-[rgba(0,0,0,0.2)] hover:bg-[rgba(0,0,0,0.3)] transition-colors"
+                    >
+                      {player.espnId ? (
+                        <Image
+                          src={`https://a.espncdn.com/i/headshots/nfl/players/full/${player.espnId}.png`}
+                          alt={player.name}
+                          width={40}
+                          height={40}
+                          className="rounded-full bg-[rgba(255,255,255,0.1)]"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-[rgba(255,255,255,0.1)] flex items-center justify-center">
+                          <span className="text-xs text-[var(--chalk-muted)]">
+                            {player.position}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-[var(--chalk-white)] truncate">
+                          {player.name}
+                        </div>
+                        <div className="text-xs text-[var(--chalk-muted)]">
+                          {player.position} - {player.ownerName}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-[var(--chalk-green)]">
+                          {player.totalPoints.toFixed(1)}
+                        </div>
+                        <div className="text-[10px] text-[var(--chalk-muted)]">
+                          {player.gamesPlayed > 0
+                            ? `${player.gamesPlayed} game${player.gamesPlayed !== 1 ? "s" : ""}`
+                            : "No games"}
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-[var(--chalk-muted)]">
+                  No rostered players
+                </div>
+              )}
+            </div>
+
+            {/* Home Team */}
+            <div>
+              <div className="flex items-center gap-3 p-3 rounded-lg mb-4 bg-[rgba(255,255,255,0.05)]">
+                <TeamLogoServer abbreviation={homeCompetitor.team.abbreviation} size={32} />
+                <span className="text-lg font-bold text-[var(--chalk-white)]">
+                  {homeCompetitor.team.abbreviation}
+                </span>
+                <span className="text-sm text-[var(--chalk-muted)]">
+                  {preGameHomePlayers.length} player{preGameHomePlayers.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              {preGameHomePlayers.length > 0 ? (
+                <div className="space-y-2">
+                  {preGameHomePlayers.map((player) => (
+                    <Link
+                      key={player.id}
+                      href={`/player/${player.id}`}
+                      className="flex items-center gap-3 p-3 rounded-lg bg-[rgba(0,0,0,0.2)] hover:bg-[rgba(0,0,0,0.3)] transition-colors"
+                    >
+                      {player.espnId ? (
+                        <Image
+                          src={`https://a.espncdn.com/i/headshots/nfl/players/full/${player.espnId}.png`}
+                          alt={player.name}
+                          width={40}
+                          height={40}
+                          className="rounded-full bg-[rgba(255,255,255,0.1)]"
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-[rgba(255,255,255,0.1)] flex items-center justify-center">
+                          <span className="text-xs text-[var(--chalk-muted)]">
+                            {player.position}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-[var(--chalk-white)] truncate">
+                          {player.name}
+                        </div>
+                        <div className="text-xs text-[var(--chalk-muted)]">
+                          {player.position} - {player.ownerName}
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-[var(--chalk-green)]">
+                          {player.totalPoints.toFixed(1)}
+                        </div>
+                        <div className="text-[10px] text-[var(--chalk-muted)]">
+                          {player.gamesPlayed > 0
+                            ? `${player.gamesPlayed} game${player.gamesPlayed !== 1 ? "s" : ""}`
+                            : "No games"}
+                        </div>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-6 text-[var(--chalk-muted)]">
+                  No rostered players
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Pre-Game: No Rostered Players */}
+      {isScheduled && preGameAwayPlayers.length === 0 && preGameHomePlayers.length === 0 && (
         <div className="chalk-box p-6 text-center">
           <div className="text-[var(--chalk-muted)]">
-            Game has not started yet. Check back when the game begins to see player stats.
+            No rostered players from the league are in this game. Check back when the game begins
+            for live stats.
           </div>
         </div>
       )}

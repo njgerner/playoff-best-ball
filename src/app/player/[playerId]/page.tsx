@@ -1,10 +1,213 @@
 import Link from "next/link";
+import Image from "next/image";
 import prisma from "@/lib/db";
 import { ScoringBreakdown } from "@/components/scoring-breakdown";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notFound } from "next/navigation";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 import { getEliminatedTeams } from "@/lib/espn/client";
+
+// Player headshot component
+function PlayerHeadshot({
+  espnId,
+  playerName,
+  size = 96,
+}: {
+  espnId?: string | null;
+  playerName: string;
+  size?: number;
+}) {
+  if (!espnId) {
+    // Fallback placeholder
+    return (
+      <div
+        className="bg-[rgba(255,255,255,0.1)] rounded-full flex items-center justify-center text-[var(--chalk-muted)]"
+        style={{ width: size, height: size }}
+      >
+        <svg className="w-12 h-12" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+        </svg>
+      </div>
+    );
+  }
+
+  const headshotUrl = `https://a.espncdn.com/i/headshots/nfl/players/full/${espnId}.png`;
+
+  return (
+    <Image
+      src={headshotUrl}
+      alt={playerName}
+      width={size}
+      height={size}
+      className="rounded-full bg-[rgba(255,255,255,0.1)] object-cover"
+      unoptimized
+    />
+  );
+}
+
+// Team logo component for server-side
+function TeamLogoSmall({ abbreviation }: { abbreviation: string }) {
+  const logoUrl = `https://a.espncdn.com/i/teamlogos/nfl/500/${abbreviation.toLowerCase()}.png`;
+  return (
+    <Image
+      src={logoUrl}
+      alt={`${abbreviation} logo`}
+      width={24}
+      height={24}
+      className="object-contain"
+      unoptimized
+    />
+  );
+}
+
+// Stats summary interface
+interface StatsSummary {
+  passYards: number;
+  passTd: number;
+  passInt: number;
+  rushYards: number;
+  rushTd: number;
+  recYards: number;
+  recTd: number;
+  receptions: number;
+  fumblesLost: number;
+  fgMade: number;
+  xpMade: number;
+  sacks: number;
+  interceptions: number;
+  defensiveTd: number;
+}
+
+function aggregateStats(scores: { breakdown: unknown }[]): StatsSummary {
+  const summary: StatsSummary = {
+    passYards: 0,
+    passTd: 0,
+    passInt: 0,
+    rushYards: 0,
+    rushTd: 0,
+    recYards: 0,
+    recTd: 0,
+    receptions: 0,
+    fumblesLost: 0,
+    fgMade: 0,
+    xpMade: 0,
+    sacks: 0,
+    interceptions: 0,
+    defensiveTd: 0,
+  };
+
+  for (const score of scores) {
+    const breakdown = score.breakdown as Record<string, number> | null;
+    if (!breakdown) continue;
+
+    summary.passYards += breakdown.passYards || 0;
+    summary.passTd += breakdown.passTd || 0;
+    summary.passInt += breakdown.passInt || 0;
+    summary.rushYards += breakdown.rushYards || 0;
+    summary.rushTd += breakdown.rushTd || 0;
+    summary.recYards += breakdown.recYards || 0;
+    summary.recTd += breakdown.recTd || 0;
+    summary.receptions += breakdown.receptions || 0;
+    summary.fumblesLost += breakdown.fumblesLost || 0;
+    summary.fgMade += breakdown.fgMade || 0;
+    summary.xpMade += breakdown.xpMade || 0;
+    summary.sacks += breakdown.sacks || 0;
+    summary.interceptions += breakdown.interceptions || breakdown.defInt || 0;
+    summary.defensiveTd += breakdown.defensiveTd || breakdown.dstTd || 0;
+  }
+
+  return summary;
+}
+
+// Stats section component
+function StatsSection({
+  position,
+  scores,
+}: {
+  position: string;
+  scores: { breakdown: unknown }[];
+}) {
+  const stats = aggregateStats(scores);
+  const gamesPlayed = scores.filter((s) => s.breakdown).length;
+
+  // Show different stats based on position
+  const statItems: { label: string; value: string | number; highlight?: boolean }[] = [];
+
+  if (position === "QB") {
+    statItems.push(
+      {
+        label: "Pass Yards",
+        value: stats.passYards.toLocaleString(),
+        highlight: stats.passYards > 0,
+      },
+      { label: "Pass TD", value: stats.passTd, highlight: stats.passTd > 0 },
+      { label: "INT", value: stats.passInt },
+      { label: "Rush Yards", value: stats.rushYards, highlight: stats.rushYards > 0 },
+      { label: "Rush TD", value: stats.rushTd, highlight: stats.rushTd > 0 }
+    );
+  } else if (position === "RB") {
+    statItems.push(
+      {
+        label: "Rush Yards",
+        value: stats.rushYards.toLocaleString(),
+        highlight: stats.rushYards > 0,
+      },
+      { label: "Rush TD", value: stats.rushTd, highlight: stats.rushTd > 0 },
+      { label: "Receptions", value: stats.receptions, highlight: stats.receptions > 0 },
+      { label: "Rec Yards", value: stats.recYards, highlight: stats.recYards > 0 },
+      { label: "Rec TD", value: stats.recTd, highlight: stats.recTd > 0 }
+    );
+  } else if (position === "WR" || position === "TE") {
+    statItems.push(
+      { label: "Receptions", value: stats.receptions, highlight: stats.receptions > 0 },
+      { label: "Rec Yards", value: stats.recYards.toLocaleString(), highlight: stats.recYards > 0 },
+      { label: "Rec TD", value: stats.recTd, highlight: stats.recTd > 0 },
+      { label: "Rush Yards", value: stats.rushYards, highlight: stats.rushYards > 0 },
+      { label: "Rush TD", value: stats.rushTd, highlight: stats.rushTd > 0 }
+    );
+  } else if (position === "K") {
+    statItems.push(
+      { label: "FG Made", value: stats.fgMade, highlight: stats.fgMade > 0 },
+      { label: "XP Made", value: stats.xpMade, highlight: stats.xpMade > 0 }
+    );
+  } else if (position === "DST") {
+    statItems.push(
+      { label: "Sacks", value: stats.sacks, highlight: stats.sacks > 0 },
+      { label: "INT", value: stats.interceptions, highlight: stats.interceptions > 0 },
+      { label: "Def TD", value: stats.defensiveTd, highlight: stats.defensiveTd > 0 }
+    );
+  }
+
+  // Filter out empty stats for cleaner display
+  const filteredStats = statItems.filter((item) => item.value !== 0 && item.value !== "0");
+
+  if (filteredStats.length === 0) return null;
+
+  return (
+    <div className="chalk-box p-4">
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-bold text-[var(--chalk-white)]">Playoff Stats</h3>
+        <span className="text-xs text-[var(--chalk-muted)]">
+          {gamesPlayed} game{gamesPlayed !== 1 ? "s" : ""}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 sm:grid-cols-5 gap-3">
+        {filteredStats.map((item) => (
+          <div key={item.label} className="text-center">
+            <div
+              className={`text-xl sm:text-2xl font-bold ${item.highlight ? "text-[var(--chalk-green)]" : "text-[var(--chalk-white)]"}`}
+            >
+              {item.value}
+            </div>
+            <div className="text-[10px] sm:text-xs text-[var(--chalk-muted)] uppercase tracking-wide">
+              {item.label}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 const WEEK_LABELS: Record<number, string> = {
   1: "Wild Card Round",
@@ -92,8 +295,14 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
       )}
 
       {/* Header */}
-      <div className="flex items-start justify-between">
-        <div>
+      <div className="flex items-start gap-4 sm:gap-6">
+        {/* Player Headshot */}
+        <div className="flex-shrink-0">
+          <PlayerHeadshot espnId={player.espnId} playerName={player.name} size={96} />
+        </div>
+
+        {/* Player Info */}
+        <div className="flex-1 min-w-0">
           <Link
             href="/rosters"
             className="text-sm text-[var(--chalk-pink)] hover:underline mb-2 inline-block"
@@ -101,21 +310,22 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
             &larr; Back to Rosters
           </Link>
           <h1
-            className={`text-3xl font-bold chalk-text ${isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-yellow)]"}`}
+            className={`text-2xl sm:text-3xl font-bold chalk-text truncate ${isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-yellow)]"}`}
           >
             {player.name}
           </h1>
-          <div className="flex items-center gap-3 mt-2">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
             <span className={`chalk-badge ${badgeClass} ${isEliminated ? "opacity-50" : ""}`}>
               {player.position}
             </span>
             {player.team && (
               <span
-                className={`text-sm ${isEliminated ? "text-red-400" : "text-[var(--chalk-muted)]"}`}
+                className={`flex items-center gap-1.5 text-sm ${isEliminated ? "text-red-400" : "text-[var(--chalk-muted)]"}`}
               >
+                <TeamLogoSmall abbreviation={player.team} />
                 {player.team}
                 {isEliminated && (
-                  <span className="ml-2 text-xs bg-red-900/50 px-1.5 py-0.5 rounded">OUT</span>
+                  <span className="ml-1 text-xs bg-red-900/50 px-1.5 py-0.5 rounded">OUT</span>
                 )}
               </span>
             )}
@@ -126,10 +336,12 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
             )}
           </div>
         </div>
-        <div className="text-right">
+
+        {/* Total Points */}
+        <div className="text-right flex-shrink-0">
           <div className="text-sm text-[var(--chalk-muted)]">Total Points</div>
           <div
-            className={`text-4xl font-bold chalk-score ${isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-green)]"}`}
+            className={`text-3xl sm:text-4xl font-bold chalk-score ${isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-green)]"}`}
           >
             {totalPoints.toFixed(1)}
           </div>
@@ -137,10 +349,15 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
         </div>
       </div>
 
-      {/* Summary Card */}
+      {/* Stats Summary */}
+      {player.scores.length > 0 && (
+        <StatsSection position={player.position} scores={player.scores} />
+      )}
+
+      {/* Season Summary */}
       <Card>
         <CardHeader>
-          <CardTitle>Season Summary</CardTitle>
+          <CardTitle>Points by Round</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

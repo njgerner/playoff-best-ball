@@ -37,6 +37,7 @@ export async function GET(request: Request) {
         ownerId: string;
         ownerName: string;
         rosterSlot: string;
+        position: string;
         team: string | null;
       }
     >();
@@ -47,6 +48,7 @@ export async function GET(request: Request) {
         ownerId: roster.owner.id,
         ownerName: roster.owner.name,
         rosterSlot: roster.rosterSlot,
+        position: roster.player.position,
         team: roster.player.team,
       });
     }
@@ -90,6 +92,7 @@ export async function GET(request: Request) {
         shortName:
           event.shortName ||
           `${awayCompetitor.team.abbreviation} @ ${homeCompetitor.team.abbreviation}`,
+        date: event.date,
         status: {
           state: event.status.type.state as "pre" | "in" | "post",
           completed: event.status.type.completed,
@@ -132,7 +135,7 @@ export async function GET(request: Request) {
               gameInfo.players.push({
                 playerId: rosterInfo.playerId,
                 playerName: player.name,
-                position: player.position || "FLEX",
+                position: rosterInfo.position,
                 team: player.team || "",
                 ownerId: rosterInfo.ownerId,
                 ownerName: rosterInfo.ownerName,
