@@ -1,39 +1,673 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 
-interface SyncResult {
-  success: boolean;
-  data?: {
-    gamesFound: number;
-    playersFromEspn: string[];
-    defensesFromEspn: string[];
-    matchedPlayers: string[];
-    unmatchedPlayers: string[];
-    scoresUpdated: number;
-    errors: string[];
+// Types
+interface HealthData {
+  status: "healthy" | "warning" | "error";
+  lastSync: string | null;
+  lastSyncAge: number | null;
+  weekCoverage: {
+    week: number;
+    label: string;
+    scoresCount: number;
+    hasData: boolean;
+  }[];
+  stats: {
+    totalPlayers: number;
+    playersWithEspnId: number;
+    playersWithoutEspnId: number;
+    totalOwners: number;
+    totalRosters: number;
+    eliminatedTeams: number;
+    activeTeams: number;
+    playersOnActiveTeams: number;
+    playersOnEliminatedTeams: number;
+    unmatchedOnActiveTeams: number;
   };
-  logs?: string[];
-  meta?: {
-    year: number;
-    weeks: number[];
-    syncedAt: string;
-  };
-  error?: string;
-  message?: string;
+  eliminatedTeamsList: string[];
+  alerts: { type: "warning" | "error" | "info"; message: string }[];
 }
 
-export default function AdminPage() {
+interface RosterPlayer {
+  rosterId: string;
+  playerId: string;
+  name: string;
+  position: string;
+  team: string | null;
+  espnId: string | null;
+  rosterSlot: string;
+  totalPoints: number;
+  isEliminated: boolean;
+  hasEspnId: boolean;
+}
+
+interface RosterData {
+  ownerId: string;
+  ownerName: string;
+  players: RosterPlayer[];
+  totalPoints: number;
+  activePlayers: number;
+  totalPlayers: number;
+}
+
+interface UnmatchedPlayer {
+  id: string;
+  name: string;
+  position: string;
+  team: string | null;
+  isRostered: boolean;
+  isEliminated: boolean;
+  ownerName: string | null;
+  priority: number;
+}
+
+interface ESPNSearchResult {
+  espnId: string;
+  name: string;
+  shortName: string;
+  position: string | null;
+  team: string | null;
+  teamName: string | null;
+}
+
+// Health Dashboard Component
+function HealthDashboard() {
+  const [health, setHealth] = useState<HealthData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/admin/health")
+      .then((res) => res.json())
+      .then(setHealth)
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-[var(--chalk-muted)]">
+          Loading health data...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!health) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-red-400">
+          Failed to load health data
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const statusColors = {
+    healthy: "bg-green-500",
+    warning: "bg-yellow-500",
+    error: "bg-red-500",
+  };
+
+  const statusLabels = {
+    healthy: "Healthy",
+    warning: "Warning",
+    error: "Error",
+  };
+
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            System Health
+            <span className={`w-3 h-3 rounded-full ${statusColors[health.status]}`} />
+            <span
+              className={`text-sm font-normal ${
+                health.status === "healthy"
+                  ? "text-green-400"
+                  : health.status === "warning"
+                    ? "text-yellow-400"
+                    : "text-red-400"
+              }`}
+            >
+              {statusLabels[health.status]}
+            </span>
+          </CardTitle>
+          {health.lastSync && (
+            <span className="text-xs text-[var(--chalk-muted)]">
+              Last sync:{" "}
+              {health.lastSyncAge !== null
+                ? `${health.lastSyncAge}m ago`
+                : new Date(health.lastSync).toLocaleTimeString()}
+            </span>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Alerts */}
+        {health.alerts.length > 0 && (
+          <div className="space-y-2">
+            {health.alerts.map((alert, i) => (
+              <div
+                key={i}
+                className={`text-xs px-3 py-2 rounded ${
+                  alert.type === "warning"
+                    ? "bg-yellow-900/30 text-yellow-400"
+                    : alert.type === "error"
+                      ? "bg-red-900/30 text-red-400"
+                      : "bg-blue-900/30 text-blue-400"
+                }`}
+              >
+                {alert.type === "warning" && "⚠️ "}
+                {alert.type === "error" && "❌ "}
+                {alert.type === "info" && "ℹ️ "}
+                {alert.message}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Week Coverage */}
+        <div>
+          <div className="text-xs text-[var(--chalk-muted)] mb-2">Week Coverage</div>
+          <div className="grid grid-cols-4 gap-2">
+            {health.weekCoverage.map((week) => (
+              <div
+                key={week.week}
+                className={`text-center p-2 rounded ${
+                  week.hasData
+                    ? "bg-green-900/30 border border-green-500/30"
+                    : "bg-[rgba(255,255,255,0.05)] border border-[rgba(255,255,255,0.1)]"
+                }`}
+              >
+                <div className="text-xs text-[var(--chalk-muted)]">{week.label}</div>
+                <div
+                  className={`text-lg font-bold ${week.hasData ? "text-green-400" : "text-[var(--chalk-muted)]"}`}
+                >
+                  {week.scoresCount}
+                </div>
+                <div className="text-[10px] text-[var(--chalk-muted)]">scores</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+          <div className="bg-[rgba(0,0,0,0.2)] rounded p-2">
+            <div className="text-xl font-bold text-[var(--chalk-white)]">
+              {health.stats.totalPlayers}
+            </div>
+            <div className="text-[10px] text-[var(--chalk-muted)]">Total Players</div>
+          </div>
+          <div className="bg-[rgba(0,0,0,0.2)] rounded p-2">
+            <div className="text-xl font-bold text-green-400">{health.stats.playersWithEspnId}</div>
+            <div className="text-[10px] text-[var(--chalk-muted)]">ESPN Matched</div>
+          </div>
+          <div className="bg-[rgba(0,0,0,0.2)] rounded p-2">
+            <div className="text-xl font-bold text-[var(--chalk-white)]">
+              {health.stats.activeTeams}
+            </div>
+            <div className="text-[10px] text-[var(--chalk-muted)]">Active Teams</div>
+          </div>
+          <div className="bg-[rgba(0,0,0,0.2)] rounded p-2">
+            <div className="text-xl font-bold text-red-400">{health.stats.eliminatedTeams}</div>
+            <div className="text-[10px] text-[var(--chalk-muted)]">Eliminated</div>
+          </div>
+        </div>
+
+        {/* Eliminated Teams List */}
+        {health.eliminatedTeamsList.length > 0 && (
+          <div className="text-xs">
+            <span className="text-[var(--chalk-muted)]">Eliminated: </span>
+            <span className="text-red-400">{health.eliminatedTeamsList.join(", ")}</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Roster Management Component
+function RosterManagement() {
+  const [rosters, setRosters] = useState<RosterData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [expandedOwner, setExpandedOwner] = useState<string | null>(null);
+  const [editingPlayer, setEditingPlayer] = useState<string | null>(null);
+
+  const fetchRosters = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/rosters?year=${CURRENT_SEASON_YEAR}`);
+      const data = await res.json();
+      setRosters(data.rosters || []);
+    } catch (error) {
+      console.error("Error fetching rosters:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRosters();
+  }, [fetchRosters]);
+
+  const handleRemovePlayer = async (rosterId: string) => {
+    if (!confirm("Remove this player from the roster?")) return;
+
+    try {
+      const res = await fetch("/api/admin/rosters", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rosterId }),
+      });
+
+      if (res.ok) {
+        fetchRosters();
+      }
+    } catch (error) {
+      console.error("Error removing player:", error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-[var(--chalk-muted)]">
+          Loading rosters...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Roster Management</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {rosters
+          .sort((a, b) => b.totalPoints - a.totalPoints)
+          .map((roster) => (
+            <div
+              key={roster.ownerId}
+              className="border border-[rgba(255,255,255,0.1)] rounded-lg overflow-hidden"
+            >
+              {/* Owner Header - Clickable */}
+              <button
+                onClick={() =>
+                  setExpandedOwner(expandedOwner === roster.ownerId ? null : roster.ownerId)
+                }
+                className="w-full px-4 py-3 flex items-center justify-between bg-[rgba(0,0,0,0.2)] hover:bg-[rgba(0,0,0,0.3)] transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`transform transition-transform ${expandedOwner === roster.ownerId ? "rotate-90" : ""}`}
+                  >
+                    ▶
+                  </span>
+                  <span className="font-bold text-[var(--chalk-white)]">{roster.ownerName}</span>
+                  <span className="text-xs text-[var(--chalk-muted)]">
+                    {roster.activePlayers}/{roster.totalPlayers} active
+                  </span>
+                </div>
+                <span className="font-bold text-[var(--chalk-green)]">
+                  {roster.totalPoints.toFixed(1)} pts
+                </span>
+              </button>
+
+              {/* Expanded Player List */}
+              {expandedOwner === roster.ownerId && (
+                <div className="border-t border-[rgba(255,255,255,0.1)]">
+                  {roster.players.map((player) => (
+                    <div
+                      key={player.rosterId}
+                      className={`px-4 py-2 flex items-center justify-between text-sm border-b border-[rgba(255,255,255,0.05)] last:border-0 ${
+                        player.isEliminated ? "opacity-50" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="text-[10px] text-[var(--chalk-muted)] w-8">
+                          {player.rosterSlot}
+                        </span>
+                        <span
+                          className={`text-xs px-1.5 py-0.5 rounded ${
+                            player.position === "QB"
+                              ? "bg-red-900/50 text-red-400"
+                              : player.position === "RB"
+                                ? "bg-green-900/50 text-green-400"
+                                : player.position === "WR"
+                                  ? "bg-blue-900/50 text-blue-400"
+                                  : player.position === "TE"
+                                    ? "bg-yellow-900/50 text-yellow-400"
+                                    : player.position === "K"
+                                      ? "bg-purple-900/50 text-purple-400"
+                                      : "bg-orange-900/50 text-orange-400"
+                          }`}
+                        >
+                          {player.position}
+                        </span>
+                        <span className="text-[var(--chalk-white)]">{player.name}</span>
+                        {player.team && (
+                          <span className="text-xs text-[var(--chalk-muted)]">{player.team}</span>
+                        )}
+                        {!player.hasEspnId && (
+                          <span className="text-[10px] bg-yellow-900/50 text-yellow-400 px-1 rounded">
+                            No ESPN ID
+                          </span>
+                        )}
+                        {player.isEliminated && (
+                          <span className="text-[10px] bg-red-900/50 text-red-400 px-1 rounded">
+                            OUT
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <span
+                          className={`font-mono ${player.totalPoints > 0 ? "text-[var(--chalk-green)]" : "text-[var(--chalk-muted)]"}`}
+                        >
+                          {player.totalPoints.toFixed(1)}
+                        </span>
+                        <button
+                          onClick={() => handleRemovePlayer(player.rosterId)}
+                          className="text-red-400 hover:text-red-300 text-xs"
+                          title="Remove from roster"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Player Matching Tool Component
+function PlayerMatchingTool() {
+  const [unmatchedPlayers, setUnmatchedPlayers] = useState<UnmatchedPlayer[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<ESPNSearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [selectedPlayer, setSelectedPlayer] = useState<UnmatchedPlayer | null>(null);
+  const [updating, setUpdating] = useState(false);
+
+  const fetchUnmatched = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/players/unmatched?rostered=true");
+      const data = await res.json();
+      setUnmatchedPlayers(data.players || []);
+    } catch (error) {
+      console.error("Error fetching unmatched:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchUnmatched();
+  }, [fetchUnmatched]);
+
+  const handleSearch = async (query: string) => {
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    setSearching(true);
+    try {
+      const res = await fetch(`/api/admin/espn/search?name=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      setSearchResults(data.results || []);
+    } catch (error) {
+      console.error("Error searching ESPN:", error);
+    } finally {
+      setSearching(false);
+    }
+  };
+
+  const handleAssignEspnId = async (playerId: string, espnId: string, team?: string | null) => {
+    setUpdating(true);
+    try {
+      const res = await fetch(`/api/admin/players/${playerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ espnId, team: team || undefined }),
+      });
+
+      if (res.ok) {
+        setSelectedPlayer(null);
+        setSearchQuery("");
+        setSearchResults([]);
+        fetchUnmatched();
+      }
+    } catch (error) {
+      console.error("Error updating player:", error);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Card>
+        <CardContent className="py-8 text-center text-[var(--chalk-muted)]">
+          Loading unmatched players...
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const activeUnmatched = unmatchedPlayers.filter((p) => !p.isEliminated);
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Player Matching Tool</span>
+          {activeUnmatched.length > 0 && (
+            <span className="text-sm font-normal text-yellow-400">
+              {activeUnmatched.length} on active teams
+            </span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {unmatchedPlayers.length === 0 ? (
+          <div className="text-center text-green-400 py-4">
+            ✓ All rostered players have ESPN IDs
+          </div>
+        ) : (
+          <>
+            {/* Unmatched Players List */}
+            <div className="space-y-1 max-h-64 overflow-y-auto">
+              {unmatchedPlayers.map((player) => (
+                <div
+                  key={player.id}
+                  className={`flex items-center justify-between px-3 py-2 rounded cursor-pointer transition-colors ${
+                    selectedPlayer?.id === player.id
+                      ? "bg-[var(--chalk-blue)]/20 border border-[var(--chalk-blue)]/50"
+                      : "bg-[rgba(0,0,0,0.2)] hover:bg-[rgba(0,0,0,0.3)]"
+                  } ${player.isEliminated ? "opacity-50" : ""}`}
+                  onClick={() => {
+                    setSelectedPlayer(player);
+                    setSearchQuery(player.name);
+                    handleSearch(player.name);
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={`text-xs px-1.5 py-0.5 rounded ${
+                        player.priority === 1
+                          ? "bg-yellow-900/50 text-yellow-400"
+                          : "bg-[rgba(255,255,255,0.1)] text-[var(--chalk-muted)]"
+                      }`}
+                    >
+                      {player.position}
+                    </span>
+                    <span className="text-[var(--chalk-white)]">{player.name}</span>
+                    {player.team && (
+                      <span className="text-xs text-[var(--chalk-muted)]">{player.team}</span>
+                    )}
+                  </div>
+                  <span className="text-xs text-[var(--chalk-muted)]">{player.ownerName}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* Search Section */}
+            {selectedPlayer && (
+              <div className="border-t border-[rgba(255,255,255,0.1)] pt-4 space-y-3">
+                <div className="text-sm text-[var(--chalk-white)]">
+                  Finding ESPN match for: <span className="font-bold">{selectedPlayer.name}</span>
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      handleSearch(e.target.value);
+                    }}
+                    placeholder="Search ESPN..."
+                    className="flex-1 bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.2)] rounded px-3 py-2 text-sm text-[var(--chalk-white)] placeholder:text-[var(--chalk-muted)]"
+                  />
+                  <button
+                    onClick={() => handleSearch(searchQuery)}
+                    disabled={searching}
+                    className="px-4 py-2 bg-[var(--chalk-blue)] hover:bg-[var(--chalk-blue)]/80 rounded text-sm font-medium disabled:opacity-50"
+                  >
+                    {searching ? "..." : "Search"}
+                  </button>
+                </div>
+
+                {/* Search Results */}
+                {searchResults.length > 0 && (
+                  <div className="space-y-1">
+                    {searchResults.map((result) => (
+                      <div
+                        key={result.espnId}
+                        className="flex items-center justify-between px-3 py-2 bg-[rgba(0,0,0,0.2)] rounded hover:bg-[rgba(0,0,0,0.3)]"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[var(--chalk-white)]">{result.name}</span>
+                          {result.position && (
+                            <span className="text-xs text-[var(--chalk-muted)]">
+                              {result.position}
+                            </span>
+                          )}
+                          {result.team && (
+                            <span className="text-xs text-[var(--chalk-muted)]">{result.team}</span>
+                          )}
+                          <span className="text-[10px] text-[var(--chalk-muted)]">
+                            ID: {result.espnId}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() =>
+                            handleAssignEspnId(selectedPlayer.id, result.espnId, result.team)
+                          }
+                          disabled={updating}
+                          className="px-3 py-1 bg-green-600 hover:bg-green-700 rounded text-xs font-medium disabled:opacity-50"
+                        >
+                          {updating ? "..." : "Use"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {searchResults.length === 0 && searchQuery.length >= 2 && !searching && (
+                  <div className="text-sm text-[var(--chalk-muted)] text-center py-2">
+                    No ESPN results found
+                  </div>
+                )}
+
+                {/* Manual Entry Option */}
+                <div className="pt-2 border-t border-[rgba(255,255,255,0.1)]">
+                  <ManualEspnIdEntry
+                    playerId={selectedPlayer.id}
+                    onSuccess={() => {
+                      setSelectedPlayer(null);
+                      fetchUnmatched();
+                    }}
+                  />
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Manual ESPN ID Entry Component
+function ManualEspnIdEntry({ playerId, onSuccess }: { playerId: string; onSuccess: () => void }) {
+  const [espnId, setEspnId] = useState("");
+  const [updating, setUpdating] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!espnId.trim()) return;
+
+    setUpdating(true);
+    try {
+      const res = await fetch(`/api/admin/players/${playerId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ espnId: espnId.trim() }),
+      });
+
+      if (res.ok) {
+        setEspnId("");
+        onSuccess();
+      }
+    } catch (error) {
+      console.error("Error updating player:", error);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  return (
+    <div className="flex gap-2">
+      <input
+        type="text"
+        value={espnId}
+        onChange={(e) => setEspnId(e.target.value)}
+        placeholder="Enter ESPN ID manually..."
+        className="flex-1 bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.2)] rounded px-3 py-2 text-sm text-[var(--chalk-white)] placeholder:text-[var(--chalk-muted)]"
+      />
+      <button
+        onClick={handleSubmit}
+        disabled={updating || !espnId.trim()}
+        className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded text-sm font-medium disabled:opacity-50"
+      >
+        {updating ? "..." : "Set ID"}
+      </button>
+    </div>
+  );
+}
+
+// Sync Actions Component (moved from old admin)
+function SyncActions() {
   const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<SyncResult | null>(null);
-  const [liveScores, setLiveScores] = useState<Record<string, unknown> | null>(null);
-  const [loadingScores, setLoadingScores] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
 
   const handleSync = async () => {
     setSyncing(true);
-    setSyncResult(null);
+    setResult(null);
 
     try {
       const response = await fetch("/api/sync", {
@@ -45,279 +679,73 @@ export default function AdminPage() {
         }),
       });
 
-      const result = await response.json();
-      setSyncResult(result);
+      const data = await response.json();
+      if (data.success) {
+        setResult(
+          `Synced ${data.data?.scoresUpdated || 0} scores from ${data.data?.gamesFound || 0} games`
+        );
+      } else {
+        setResult(`Error: ${data.error || "Unknown error"}`);
+      }
     } catch (error) {
-      setSyncResult({
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+      setResult(`Error: ${error instanceof Error ? error.message : "Unknown"}`);
     } finally {
       setSyncing(false);
     }
   };
 
-  const handleFetchLive = async () => {
-    setLoadingScores(true);
-    setLiveScores(null);
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Manual Sync</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-[var(--chalk-muted)]">
+          Manually trigger ESPN data sync. This runs automatically via cron every 15 minutes.
+        </p>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="w-full chalk-button chalk-button-blue"
+        >
+          {syncing ? "Syncing..." : "Sync ESPN Data"}
+        </button>
+        {result && (
+          <div
+            className={`text-sm p-2 rounded ${
+              result.startsWith("Error")
+                ? "bg-red-900/30 text-red-400"
+                : "bg-green-900/30 text-green-400"
+            }`}
+          >
+            {result}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
-    try {
-      const response = await fetch("/api/scores");
-      const result = await response.json();
-      setLiveScores(result);
-    } catch (error) {
-      setLiveScores({ error: error instanceof Error ? error.message : "Unknown error" });
-    } finally {
-      setLoadingScores(false);
-    }
-  };
-
+// Main Admin Page
+export default function AdminPage() {
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold text-[var(--chalk-yellow)] chalk-text">Admin</h1>
+      <h1 className="text-3xl font-bold text-[var(--chalk-yellow)] chalk-text">Admin Dashboard</h1>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Sync Scores */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Sync Scores to Database</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-[var(--chalk-muted)]">
-              Fetch the latest scores from ESPN and save them to the database. This updates all
-              player scores for playoff weeks 1, 2, 3, and 5.
-            </p>
+      {/* Health Dashboard */}
+      <HealthDashboard />
 
-            <button
-              onClick={handleSync}
-              disabled={syncing}
-              className="w-full chalk-button chalk-button-blue"
-            >
-              {syncing ? "Syncing..." : "Sync Scores"}
-            </button>
+      {/* Two Column Layout for smaller cards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Player Matching Tool */}
+        <PlayerMatchingTool />
 
-            {syncResult && (
-              <div className="space-y-4">
-                {/* Summary */}
-                <div
-                  className={`p-3 rounded-lg ${syncResult.success ? "bg-green-900/30 border border-green-500/30" : "bg-red-900/30 border border-red-500/30"}`}
-                >
-                  <div className="font-bold text-sm">
-                    {syncResult.success ? "Sync Complete" : "Sync Failed"}
-                  </div>
-                  {syncResult.data && (
-                    <div className="text-xs mt-2 space-y-1">
-                      <div>Games found: {syncResult.data.gamesFound}</div>
-                      <div>ESPN players: {syncResult.data.playersFromEspn.length}</div>
-                      <div>Matched: {syncResult.data.matchedPlayers.length}</div>
-                      <div>Unmatched: {syncResult.data.unmatchedPlayers.length}</div>
-                      <div>Scores updated: {syncResult.data.scoresUpdated}</div>
-                      <div>Errors: {syncResult.data.errors.length}</div>
-                    </div>
-                  )}
-                  {syncResult.error && (
-                    <div className="text-xs text-red-400 mt-2">{syncResult.error}</div>
-                  )}
-                </div>
-
-                {/* Matched Players */}
-                {syncResult.data?.matchedPlayers && syncResult.data.matchedPlayers.length > 0 && (
-                  <div>
-                    <div className="text-xs font-bold text-green-400 mb-1">
-                      Matched Players ({syncResult.data.matchedPlayers.length})
-                    </div>
-                    <div className="bg-[rgba(0,0,0,0.3)] p-2 rounded text-xs max-h-32 overflow-auto">
-                      {syncResult.data.matchedPlayers.map((p, i) => (
-                        <div key={i} className="text-green-300">
-                          {p}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Unmatched Players */}
-                {syncResult.data?.unmatchedPlayers &&
-                  syncResult.data.unmatchedPlayers.length > 0 && (
-                    <div>
-                      <div className="text-xs font-bold text-yellow-400 mb-1">
-                        Unmatched Players ({syncResult.data.unmatchedPlayers.length})
-                      </div>
-                      <div className="bg-[rgba(0,0,0,0.3)] p-2 rounded text-xs max-h-32 overflow-auto">
-                        {syncResult.data.unmatchedPlayers.slice(0, 50).map((p, i) => (
-                          <div key={i} className="text-yellow-300">
-                            {p}
-                          </div>
-                        ))}
-                        {syncResult.data.unmatchedPlayers.length > 50 && (
-                          <div className="text-[var(--chalk-muted)]">
-                            ...and {syncResult.data.unmatchedPlayers.length - 50} more
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-
-                {/* Errors */}
-                {syncResult.data?.errors && syncResult.data.errors.length > 0 && (
-                  <div>
-                    <div className="text-xs font-bold text-red-400 mb-1">
-                      Errors ({syncResult.data.errors.length})
-                    </div>
-                    <div className="bg-[rgba(0,0,0,0.3)] p-2 rounded text-xs max-h-32 overflow-auto">
-                      {syncResult.data.errors.map((e, i) => (
-                        <div key={i} className="text-red-300">
-                          {e}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Full Logs (collapsible) */}
-                {syncResult.logs && (
-                  <details className="text-xs">
-                    <summary className="cursor-pointer text-[var(--chalk-muted)] hover:text-[var(--chalk-white)]">
-                      View full logs ({syncResult.logs.length} entries)
-                    </summary>
-                    <pre className="bg-[rgba(0,0,0,0.3)] p-4 rounded-lg mt-2 overflow-auto max-h-64 text-[var(--chalk-white)] font-mono">
-                      {syncResult.logs.join("\n")}
-                    </pre>
-                  </details>
-                )}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Live Scores */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Fetch Live Scores (No DB)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-[var(--chalk-muted)]">
-              Fetch live scores directly from ESPN without saving to database. Useful for testing
-              the ESPN API integration.
-            </p>
-
-            <button
-              onClick={handleFetchLive}
-              disabled={loadingScores}
-              className="w-full chalk-button chalk-button-green"
-            >
-              {loadingScores ? "Fetching..." : "Fetch Live Scores"}
-            </button>
-
-            {liveScores && (
-              <pre className="bg-[rgba(0,0,0,0.3)] p-4 rounded-lg text-xs overflow-auto max-h-64 text-[var(--chalk-white)] font-[var(--font-chalk-mono)]">
-                {JSON.stringify(liveScores, null, 2)}
-              </pre>
-            )}
-          </CardContent>
-        </Card>
+        {/* Sync Actions */}
+        <SyncActions />
       </div>
 
-      {/* Database Status */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Setup Instructions</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-3 text-sm">
-            <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-7 h-7 chalk-rank chalk-rank-1 flex items-center justify-center">
-                1
-              </span>
-              <div>
-                <p className="font-medium text-[var(--chalk-white)]">Create Neon Database</p>
-                <p className="text-[var(--chalk-muted)]">
-                  Go to{" "}
-                  <a
-                    href="https://neon.tech"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-[var(--chalk-blue)] hover:underline"
-                  >
-                    neon.tech
-                  </a>{" "}
-                  and create a new database
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-7 h-7 chalk-rank chalk-rank-2 flex items-center justify-center">
-                2
-              </span>
-              <div>
-                <p className="font-medium text-[var(--chalk-white)]">
-                  Configure Environment Variables
-                </p>
-                <p className="text-[var(--chalk-muted)]">
-                  Add{" "}
-                  <code className="bg-[rgba(0,0,0,0.3)] px-1 rounded text-[var(--chalk-pink)]">
-                    DATABASE_URL
-                  </code>{" "}
-                  and{" "}
-                  <code className="bg-[rgba(0,0,0,0.3)] px-1 rounded text-[var(--chalk-pink)]">
-                    DIRECT_URL
-                  </code>{" "}
-                  to your{" "}
-                  <code className="bg-[rgba(0,0,0,0.3)] px-1 rounded text-[var(--chalk-pink)]">
-                    .env
-                  </code>{" "}
-                  file
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-7 h-7 chalk-rank chalk-rank-3 flex items-center justify-center">
-                3
-              </span>
-              <div>
-                <p className="font-medium text-[var(--chalk-white)]">Push Database Schema</p>
-                <p className="text-[var(--chalk-muted)]">
-                  Run{" "}
-                  <code className="bg-[rgba(0,0,0,0.3)] px-1 rounded text-[var(--chalk-pink)]">
-                    npx prisma db push
-                  </code>{" "}
-                  to create tables
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-7 h-7 chalk-rank flex items-center justify-center">
-                4
-              </span>
-              <div>
-                <p className="font-medium text-[var(--chalk-white)]">Seed Rosters</p>
-                <p className="text-[var(--chalk-muted)]">
-                  Run{" "}
-                  <code className="bg-[rgba(0,0,0,0.3)] px-1 rounded text-[var(--chalk-pink)]">
-                    npx prisma db seed
-                  </code>{" "}
-                  to populate owners and rosters
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <span className="flex-shrink-0 w-7 h-7 chalk-rank flex items-center justify-center">
-                5
-              </span>
-              <div>
-                <p className="font-medium text-[var(--chalk-white)]">Deploy to Vercel</p>
-                <p className="text-[var(--chalk-muted)]">
-                  Connect your repo to Vercel and add env variables in project settings
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Roster Management - Full Width */}
+      <RosterManagement />
     </div>
   );
 }
