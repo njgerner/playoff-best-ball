@@ -5,6 +5,16 @@ import Link from "next/link";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 import { GamesToday } from "./games-today";
 
+interface SubstitutionData {
+  effectiveWeek: number;
+  reason?: string | null;
+  substitutePlayer: {
+    id: string;
+    name: string;
+    team?: string | null;
+  };
+}
+
 interface PlayerScore {
   id: string;
   name: string;
@@ -16,6 +26,8 @@ interface PlayerScore {
   previousPoints?: number;
   projectedPoints?: number;
   expectedValue?: number | null;
+  hasSubstitution?: boolean;
+  substitution?: SubstitutionData | null;
 }
 
 interface OwnerRoster {
@@ -478,6 +490,7 @@ export function LiveScoreboard() {
                   player.expectedValue !== undefined &&
                   player.expectedValue !== null &&
                   player.expectedValue > 0;
+                const isInjured = player.hasSubstitution;
 
                 return (
                   <Link
@@ -485,16 +498,49 @@ export function LiveScoreboard() {
                     href={`/player/${player.id}`}
                     className={`flex items-center justify-between py-1 px-2 rounded hover:bg-[rgba(255,255,255,0.05)] transition-colors ${
                       isUp ? "bg-green-900/20" : ""
-                    } ${player.isEliminated ? "opacity-50" : ""}`}
+                    } ${player.isEliminated || isInjured ? "opacity-60" : ""}`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`text-xs font-mono w-6 ${posColor}`}>{player.slot}</span>
-                      <span className="text-sm text-[var(--chalk-white)] truncate">
+                    <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                      <span
+                        className={`text-xs font-mono w-6 ${posColor} ${isInjured ? "opacity-50" : ""}`}
+                      >
+                        {player.slot}
+                      </span>
+                      <span
+                        className={`text-sm truncate ${isInjured ? "text-[var(--chalk-muted)] line-through" : "text-[var(--chalk-white)]"}`}
+                      >
                         {player.name}
                       </span>
-                      {player.isEliminated && (
-                        <span className="text-xs text-red-400 px-1 py-0.5 bg-red-900/30 rounded">
+                      {isInjured && (
+                        <span
+                          className="text-[8px] text-orange-400 bg-orange-900/30 px-1 py-0.5 rounded"
+                          title={player.substitution?.reason || "Injured - out for playoffs"}
+                        >
+                          INJ
+                        </span>
+                      )}
+                      {player.isEliminated && !isInjured && (
+                        <span className="text-[8px] text-red-400 bg-red-900/30 px-1 py-0.5 rounded">
                           OUT
+                        </span>
+                      )}
+                      {/* Show substitute player */}
+                      {player.substitution && (
+                        <span className="flex items-center gap-1 text-xs">
+                          <span className="text-[var(--chalk-muted)]">/</span>
+                          <span
+                            className="text-[var(--chalk-blue)] hover:text-[var(--chalk-pink)]"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              window.location.href = `/player/${player.substitution!.substitutePlayer.id}`;
+                            }}
+                          >
+                            {player.substitution.substitutePlayer.name}
+                          </span>
+                          <span className="text-[8px] text-blue-400 bg-blue-900/30 px-1 py-0.5 rounded">
+                            SUB
+                          </span>
                         </span>
                       )}
                     </div>

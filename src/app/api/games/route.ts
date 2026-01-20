@@ -20,12 +20,18 @@ export async function GET(request: Request) {
     // Get eliminated teams based on completed playoff games
     const eliminatedTeams = await getEliminatedTeams();
 
-    // Get all rostered players with their owners
+    // Get all rostered players with their owners and substitutions
     const rosters = await prisma.roster.findMany({
       where: { year },
       include: {
         player: true,
         owner: true,
+        substitutions: {
+          where: { year },
+          include: {
+            substitutePlayer: true,
+          },
+        },
       },
     });
 
@@ -39,9 +45,43 @@ export async function GET(request: Request) {
         rosterSlot: string;
         position: string;
         team: string | null;
+        hasSubstitution: boolean;
+        substitution: {
+          effectiveWeek: number;
+          reason: string | null;
+          substitutePlayer: {
+            id: string;
+            name: string;
+            team: string | null;
+          };
+        } | null;
       }
     >();
+
+    // Also create a map for substitute players
+    const substitutePlayerMap = new Map<
+      string,
+      {
+        playerId: string;
+        ownerId: string;
+        ownerName: string;
+        rosterSlot: string;
+        position: string;
+        team: string | null;
+        isSubstitute: true;
+        originalPlayer: {
+          id: string;
+          name: string;
+          team: string | null;
+        };
+        effectiveWeek: number;
+      }
+    >();
+
     for (const roster of rosters) {
+      const substitution = roster.substitutions[0]; // At most one per roster per year
+      const hasSubstitution = !!substitution;
+
       const normalizedName = roster.player.name.toLowerCase().trim();
       playerRosterMap.set(normalizedName, {
         playerId: roster.player.id,
@@ -50,7 +90,39 @@ export async function GET(request: Request) {
         rosterSlot: roster.rosterSlot,
         position: roster.player.position,
         team: roster.player.team,
+        hasSubstitution,
+        substitution: hasSubstitution
+          ? {
+              effectiveWeek: substitution.effectiveWeek,
+              reason: substitution.reason,
+              substitutePlayer: {
+                id: substitution.substitutePlayer.id,
+                name: substitution.substitutePlayer.name,
+                team: substitution.substitutePlayer.team,
+              },
+            }
+          : null,
       });
+
+      // Add substitute player to the map too
+      if (hasSubstitution) {
+        const subNormalizedName = substitution.substitutePlayer.name.toLowerCase().trim();
+        substitutePlayerMap.set(subNormalizedName, {
+          playerId: substitution.substitutePlayer.id,
+          ownerId: roster.owner.id,
+          ownerName: roster.owner.name,
+          rosterSlot: roster.rosterSlot,
+          position: substitution.substitutePlayer.position,
+          team: substitution.substitutePlayer.team,
+          isSubstitute: true,
+          originalPlayer: {
+            id: roster.player.id,
+            name: roster.player.name,
+            team: roster.player.team,
+          },
+          effectiveWeek: substitution.effectiveWeek,
+        });
+      }
     }
 
     // Also create a map for DST matching by team abbreviation
@@ -129,9 +201,14 @@ export async function GET(request: Request) {
           for (const [, player] of playerStats) {
             const normalizedName = player.name.toLowerCase().trim();
             const rosterInfo = playerRosterMap.get(normalizedName);
+            const subInfo = substitutePlayerMap.get(normalizedName);
 
             if (rosterInfo) {
               const playerTeam = (player.team || rosterInfo.team || "").toUpperCase();
+              // Check if this original player is injured and week >= effectiveWeek
+              const isInjured =
+                rosterInfo.hasSubstitution && week >= rosterInfo.substitution!.effectiveWeek;
+
               gameInfo.players.push({
                 playerId: rosterInfo.playerId,
                 playerName: player.name,
@@ -153,6 +230,38 @@ export async function GET(request: Request) {
                   fumblesLost: player.stats.fumblesLost || undefined,
                 },
                 points: player.totalPoints,
+                // Substitution info
+                hasSubstitution: rosterInfo.hasSubstitution,
+                isInjured,
+                substitution: rosterInfo.substitution,
+              });
+            } else if (subInfo && week >= subInfo.effectiveWeek) {
+              // This is a substitute player and we're in an active week for them
+              const playerTeam = (player.team || subInfo.team || "").toUpperCase();
+              gameInfo.players.push({
+                playerId: subInfo.playerId,
+                playerName: player.name,
+                position: subInfo.position,
+                team: player.team || "",
+                ownerId: subInfo.ownerId,
+                ownerName: subInfo.ownerName,
+                rosterSlot: subInfo.rosterSlot,
+                isEliminated: eliminatedTeams.has(playerTeam),
+                stats: {
+                  passYards: player.stats.passYards || undefined,
+                  passTd: player.stats.passTd || undefined,
+                  passInt: player.stats.passInt || undefined,
+                  rushYards: player.stats.rushYards || undefined,
+                  rushTd: player.stats.rushTd || undefined,
+                  recYards: player.stats.recYards || undefined,
+                  recTd: player.stats.recTd || undefined,
+                  receptions: player.stats.receptions || undefined,
+                  fumblesLost: player.stats.fumblesLost || undefined,
+                },
+                points: player.totalPoints,
+                // Mark as substitute
+                isSubstitute: true,
+                originalPlayer: subInfo.originalPlayer,
               });
             }
           }

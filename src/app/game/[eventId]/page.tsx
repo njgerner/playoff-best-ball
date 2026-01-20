@@ -44,6 +44,23 @@ interface GamePlayer {
     fumblesLost?: number;
   };
   points: number;
+  // Substitution info
+  isInjured?: boolean;
+  substitution?: {
+    effectiveWeek: number;
+    reason: string | null;
+    substitutePlayer: {
+      id: string;
+      name: string;
+      team: string | null;
+    };
+  } | null;
+  isSubstitute?: boolean;
+  originalPlayer?: {
+    id: string;
+    name: string;
+    team: string | null;
+  };
 }
 
 const POSITION_COLORS: Record<string, string> = {
@@ -91,6 +108,8 @@ function StatChip({
 
 function PlayerCard({ player }: { player: GamePlayer }) {
   const posColor = POSITION_COLORS[player.position] || "text-[var(--chalk-white)]";
+  const isInjured = player.isInjured;
+  const isSubstitute = player.isSubstitute;
 
   // Build stat chips
   const statChips: React.ReactNode[] = [];
@@ -194,29 +213,88 @@ function PlayerCard({ player }: { player: GamePlayer }) {
       className={`block p-4 rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors border ${
         player.isEliminated
           ? "border-red-900/30 bg-red-900/10"
-          : "border-transparent bg-[rgba(0,0,0,0.2)]"
+          : isInjured
+            ? "border-orange-900/30 bg-orange-900/10"
+            : isSubstitute
+              ? "border-blue-900/30 bg-blue-900/10"
+              : "border-transparent bg-[rgba(0,0,0,0.2)]"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex-1">
-          <div className="flex items-center gap-2 mb-2">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
             <span
-              className={`text-sm font-mono ${player.isEliminated ? "text-red-400/50" : posColor}`}
+              className={`text-sm font-mono ${player.isEliminated || isInjured ? "opacity-50" : ""} ${player.isEliminated ? "text-red-400/50" : posColor}`}
             >
               {player.position}
             </span>
             <span
-              className={`text-lg font-bold ${player.isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-white)]"}`}
+              className={`text-lg font-bold ${
+                isInjured
+                  ? "text-[var(--chalk-muted)] line-through"
+                  : player.isEliminated
+                    ? "text-[var(--chalk-muted)]"
+                    : "text-[var(--chalk-white)]"
+              }`}
             >
               {player.playerName}
             </span>
+            {/* INJ badge for injured players */}
+            {isInjured && (
+              <span
+                className="text-[8px] text-orange-400 bg-orange-900/30 px-1 py-0.5 rounded"
+                title={player.substitution?.reason || "Injured - out for playoffs"}
+              >
+                INJ
+              </span>
+            )}
+            {/* SUB badge for substitute players */}
+            {isSubstitute && (
+              <span
+                className="text-[8px] text-blue-400 bg-blue-900/30 px-1 py-0.5 rounded"
+                title={`Substitute for ${player.originalPlayer?.name}`}
+              >
+                SUB
+              </span>
+            )}
+            {player.isEliminated && !isInjured && (
+              <span className="text-[8px] text-red-400 bg-red-900/30 px-1 py-0.5 rounded">OUT</span>
+            )}
           </div>
           <div className="text-sm text-[var(--chalk-muted)] mb-3">
             Rostered by <span className="text-[var(--chalk-white)]">{player.ownerName}</span>
             <span className="ml-2 text-xs">({player.rosterSlot})</span>
           </div>
 
-          {player.isEliminated && (
+          {/* Substitute info for injured player */}
+          {isInjured && player.substitution && (
+            <div className="mb-3 text-sm text-orange-300 flex items-center gap-2">
+              <span className="text-[var(--chalk-muted)]">Replaced by:</span>
+              <Link
+                href={`/player/${player.substitution.substitutePlayer.id}`}
+                className="text-[var(--chalk-blue)] hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {player.substitution.substitutePlayer.name}
+              </Link>
+            </div>
+          )}
+
+          {/* Original player info for substitute */}
+          {isSubstitute && player.originalPlayer && (
+            <div className="mb-3 text-sm text-blue-300 flex items-center gap-2">
+              <span className="text-[var(--chalk-muted)]">Filling in for:</span>
+              <Link
+                href={`/player/${player.originalPlayer.id}`}
+                className="text-[var(--chalk-blue)] hover:underline"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {player.originalPlayer.name}
+              </Link>
+            </div>
+          )}
+
+          {player.isEliminated && !isInjured && !isSubstitute && (
             <div className="mb-3 text-sm text-red-400 flex items-center gap-2">
               <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
                 <path
@@ -230,7 +308,7 @@ function PlayerCard({ player }: { player: GamePlayer }) {
           )}
 
           {statChips.length > 0 && <div className="flex flex-wrap gap-2">{statChips}</div>}
-          {statChips.length === 0 && !player.isEliminated && (
+          {statChips.length === 0 && !player.isEliminated && !isInjured && (
             <div className="text-sm text-[var(--chalk-muted)]">No stats yet</div>
           )}
         </div>
@@ -238,7 +316,7 @@ function PlayerCard({ player }: { player: GamePlayer }) {
         <div className="text-right">
           <div
             className={`text-2xl font-bold ${
-              player.isEliminated
+              player.isEliminated || isInjured
                 ? "text-[var(--chalk-muted)]"
                 : player.points > 0
                   ? "text-[var(--chalk-green)]"
@@ -297,7 +375,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
   // Get eliminated teams
   const eliminatedTeams = await getEliminatedTeams();
 
-  // Get rostered players with their scores
+  // Get rostered players with their scores and substitutions
   const rosters = await prisma.roster.findMany({
     where: { year: CURRENT_SEASON_YEAR },
     include: {
@@ -309,6 +387,12 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
         },
       },
       owner: true,
+      substitutions: {
+        where: { year: CURRENT_SEASON_YEAR },
+        include: {
+          substitutePlayer: true,
+        },
+      },
     },
   });
 
@@ -322,9 +406,42 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
       rosterSlot: string;
       position: string;
       team: string | null;
+      hasSubstitution: boolean;
+      substitution: {
+        effectiveWeek: number;
+        reason: string | null;
+        substitutePlayer: {
+          id: string;
+          name: string;
+          team: string | null;
+        };
+      } | null;
     }
   >();
+
+  // Also create a map for substitute players
+  const substitutePlayerMap = new Map<
+    string,
+    {
+      playerId: string;
+      ownerId: string;
+      ownerName: string;
+      rosterSlot: string;
+      position: string;
+      team: string | null;
+      originalPlayer: {
+        id: string;
+        name: string;
+        team: string | null;
+      };
+      effectiveWeek: number;
+    }
+  >();
+
   for (const roster of rosters) {
+    const substitution = roster.substitutions[0]; // At most one per roster per year
+    const hasSubstitution = !!substitution;
+
     const normalizedName = roster.player.name.toLowerCase().trim();
     playerRosterMap.set(normalizedName, {
       playerId: roster.player.id,
@@ -333,7 +450,38 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
       rosterSlot: roster.rosterSlot,
       position: roster.player.position,
       team: roster.player.team,
+      hasSubstitution,
+      substitution: hasSubstitution
+        ? {
+            effectiveWeek: substitution.effectiveWeek,
+            reason: substitution.reason,
+            substitutePlayer: {
+              id: substitution.substitutePlayer.id,
+              name: substitution.substitutePlayer.name,
+              team: substitution.substitutePlayer.team,
+            },
+          }
+        : null,
     });
+
+    // Add substitute player to the map too
+    if (hasSubstitution) {
+      const subNormalizedName = substitution.substitutePlayer.name.toLowerCase().trim();
+      substitutePlayerMap.set(subNormalizedName, {
+        playerId: substitution.substitutePlayer.id,
+        ownerId: roster.owner.id,
+        ownerName: roster.owner.name,
+        rosterSlot: roster.rosterSlot,
+        position: substitution.substitutePlayer.position,
+        team: substitution.substitutePlayer.team,
+        originalPlayer: {
+          id: roster.player.id,
+          name: roster.player.name,
+          team: roster.player.team,
+        },
+        effectiveWeek: substitution.effectiveWeek,
+      });
+    }
   }
 
   const dstRosterMap = new Map<
@@ -369,9 +517,14 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
       for (const [, player] of playerStats) {
         const normalizedName = player.name.toLowerCase().trim();
         const rosterInfo = playerRosterMap.get(normalizedName);
+        const subInfo = substitutePlayerMap.get(normalizedName);
 
         if (rosterInfo) {
           const playerTeam = (player.team || "").toUpperCase();
+          // Check if this original player is injured and week >= effectiveWeek
+          const isInjured =
+            rosterInfo.hasSubstitution && gameWeek >= rosterInfo.substitution!.effectiveWeek;
+
           players.push({
             playerId: rosterInfo.playerId,
             playerName: player.name,
@@ -393,6 +546,35 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
               fumblesLost: player.stats.fumblesLost || undefined,
             },
             points: player.totalPoints,
+            isInjured,
+            substitution: rosterInfo.substitution,
+          });
+        } else if (subInfo && gameWeek >= subInfo.effectiveWeek) {
+          // This is a substitute player and we're in an active week for them
+          const playerTeam = (player.team || subInfo.team || "").toUpperCase();
+          players.push({
+            playerId: subInfo.playerId,
+            playerName: player.name,
+            position: subInfo.position,
+            team: player.team || "",
+            ownerId: subInfo.ownerId,
+            ownerName: subInfo.ownerName,
+            rosterSlot: subInfo.rosterSlot,
+            isEliminated: eliminatedTeams.has(playerTeam),
+            stats: {
+              passYards: player.stats.passYards || undefined,
+              passTd: player.stats.passTd || undefined,
+              passInt: player.stats.passInt || undefined,
+              rushYards: player.stats.rushYards || undefined,
+              rushTd: player.stats.rushTd || undefined,
+              recYards: player.stats.recYards || undefined,
+              recTd: player.stats.recTd || undefined,
+              receptions: player.stats.receptions || undefined,
+              fumblesLost: player.stats.fumblesLost || undefined,
+            },
+            points: player.totalPoints,
+            isSubstitute: true,
+            originalPlayer: subInfo.originalPlayer,
           });
         }
       }

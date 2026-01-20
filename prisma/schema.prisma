@@ -25,20 +25,24 @@ model Player {
   rosters     Roster[]
   scores      PlayerScore[]
   projections PlayerProjection[]
+  // Substitution relations - player can be original (injured) or substitute
+  substitutionsAsOriginal   Substitution[] @relation("OriginalPlayer")
+  substitutionsAsSubstitute Substitution[] @relation("SubstitutePlayer")
 
   @@unique([name, position])
 }
 
 model Roster {
-  id           String       @id @default(cuid())
-  owner        Owner        @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  ownerId      String
-  player       Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  playerId     String
-  rosterSlot   RosterSlot
-  year         Int
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
+  id            String         @id @default(cuid())
+  owner         Owner          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId       String
+  player        Player         @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId      String
+  rosterSlot    RosterSlot
+  year          Int
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  substitutions Substitution[] // Substitutions for this roster slot
 
   @@unique([ownerId, playerId, year])
   @@index([ownerId, year])
@@ -150,4 +154,24 @@ model TeamOdds {
 
   @@unique([team, week, year])
   @@index([year, week])
+}
+
+// Substitution model for tracking injured player replacements
+// Enables dual scoring: original player's pre-injury points + substitute's post-injury points
+model Substitution {
+  id                 String   @id @default(cuid())
+  roster             Roster   @relation(fields: [rosterId], references: [id], onDelete: Cascade)
+  rosterId           String
+  originalPlayer     Player   @relation("OriginalPlayer", fields: [originalPlayerId], references: [id], onDelete: Cascade)
+  originalPlayerId   String
+  substitutePlayer   Player   @relation("SubstitutePlayer", fields: [substitutePlayerId], references: [id], onDelete: Cascade)
+  substitutePlayerId String
+  effectiveWeek      Int      // Week when substitute takes over (1=WC, 2=DIV, 3=CC, 5=SB)
+  year               Int
+  reason             String?  // Optional reason (e.g., "ACL injury", "Concussion")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@unique([rosterId, year]) // One active substitution per roster slot per year
+  @@index([year])
 }

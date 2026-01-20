@@ -32,7 +32,7 @@ export async function GET(request: Request) {
     const eliminatedTeams = await getEliminatedTeams();
     const byeTeams = new Set(BYE_TEAMS_2025);
 
-    // Get all owners with their rosters and player scores
+    // Get all owners with their rosters, player scores, and substitutions
     const owners = await prisma.owner.findMany({
       include: {
         rosters: {
@@ -43,6 +43,19 @@ export async function GET(request: Request) {
                 scores: {
                   where: { year },
                   orderBy: { week: "asc" },
+                },
+              },
+            },
+            substitutions: {
+              where: { year },
+              include: {
+                substitutePlayer: {
+                  include: {
+                    scores: {
+                      where: { year },
+                      orderBy: { week: "asc" },
+                    },
+                  },
                 },
               },
             },
@@ -67,16 +80,59 @@ export async function GET(request: Request) {
     // Transform data for projection view
     const projections = owners.map((owner) => {
       const players = owner.rosters.map((roster) => {
-        const actualPoints = roster.player.scores.reduce((sum, s) => sum + s.points, 0);
-        const playerTeam = (roster.player.team || "").toUpperCase();
+        const substitution = roster.substitutions[0]; // At most one per roster per year
+        const hasSubstitution = !!substitution;
+        const isInjured = hasSubstitution && week >= substitution.effectiveWeek;
+
+        // For injured players, use combined scoring; for substitutes, use their scores from effectiveWeek
+        let actualPoints: number;
+        let activePlayer: {
+          name: string;
+          team: string | null;
+          position: string;
+          scores: { week: number; points: number }[];
+        };
+
+        if (isInjured) {
+          // Original player's points before effectiveWeek + substitute's points from effectiveWeek onward
+          const originalPointsBefore = roster.player.scores
+            .filter((s) => s.week < substitution.effectiveWeek)
+            .reduce((sum, s) => sum + s.points, 0);
+          const substitutePointsAfter = substitution.substitutePlayer.scores
+            .filter((s) => s.week >= substitution.effectiveWeek)
+            .reduce((sum, s) => sum + s.points, 0);
+          actualPoints = originalPointsBefore + substitutePointsAfter;
+
+          // Use substitute player for projections going forward
+          activePlayer = {
+            name: substitution.substitutePlayer.name,
+            team: substitution.substitutePlayer.team,
+            position: substitution.substitutePlayer.position,
+            scores: substitution.substitutePlayer.scores.map((s) => ({
+              week: s.week,
+              points: s.points,
+            })),
+          };
+        } else {
+          actualPoints = roster.player.scores.reduce((sum, s) => sum + s.points, 0);
+          activePlayer = {
+            name: roster.player.name,
+            team: roster.player.team,
+            position: roster.player.position,
+            scores: roster.player.scores.map((s) => ({ week: s.week, points: s.points })),
+          };
+        }
+
+        // Use substitute team for odds/elimination if injured
+        const playerTeam = (activePlayer.team || roster.player.team || "").toUpperCase();
         const teamOdd = oddsMap.get(playerTeam);
         const isEliminated = eliminatedTeams.has(playerTeam);
         const hasBye = byeTeams.has(playerTeam);
 
         // Calculate projected points from playoff average
-        const gamesPlayed = roster.player.scores.filter((s) => s.points > 0).length;
+        const gamesPlayed = activePlayer.scores.filter((s) => s.points > 0).length;
         const avgPointsPerGame =
-          gamesPlayed > 0 ? actualPoints / gamesPlayed : getPositionAverage(roster.player.position);
+          gamesPlayed > 0 ? actualPoints / gamesPlayed : getPositionAverage(activePlayer.position);
         const projectedPoints = Math.round(avgPointsPerGame * 100) / 100;
 
         // Calculate expected value
@@ -85,9 +141,10 @@ export async function GET(request: Request) {
         const opponent: string | null = teamOdd?.opponent || null;
         let isByeWeek = false;
 
-        if (isEliminated) {
-          // Eliminated teams have no EV
-          expectedValue = null;
+        if (isEliminated || isInjured) {
+          // Eliminated teams or injured (without sub team data) have no EV
+          expectedValue =
+            isInjured && !isEliminated ? Math.round(projectedPoints * 0.5 * 100) / 100 : null;
         } else if (week === 1 && hasBye) {
           // Bye teams don't play Wild Card - show as BYE
           expectedValue = null;
@@ -119,6 +176,20 @@ export async function GET(request: Request) {
             week: s.week,
             points: s.points,
           })),
+          // Substitution info
+          hasSubstitution,
+          isInjured,
+          substitution: hasSubstitution
+            ? {
+                effectiveWeek: substitution.effectiveWeek,
+                reason: substitution.reason,
+                substitutePlayer: {
+                  id: substitution.substitutePlayer.id,
+                  name: substitution.substitutePlayer.name,
+                  team: substitution.substitutePlayer.team,
+                },
+              }
+            : null,
         };
       });
 

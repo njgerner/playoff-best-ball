@@ -119,7 +119,20 @@ const PLACEHOLDER_ROSTERS = [
   },
 ];
 
-async function getRosterData() {
+// Determine current week based on eliminated teams count
+function getCurrentWeek(eliminatedCount: number): number {
+  if (eliminatedCount < 6) {
+    return 1; // Wild Card
+  } else if (eliminatedCount < 10) {
+    return 2; // Divisional
+  } else if (eliminatedCount < 12) {
+    return 3; // Conference Championship
+  } else {
+    return 5; // Super Bowl
+  }
+}
+
+async function getRosterData(currentWeek: number) {
   try {
     const owners = await prisma.owner.findMany({
       include: {
@@ -137,6 +150,22 @@ async function getRosterData() {
                 },
               },
             },
+            substitutions: {
+              where: {
+                year: CURRENT_SEASON_YEAR,
+              },
+              include: {
+                substitutePlayer: {
+                  include: {
+                    scores: {
+                      where: {
+                        year: CURRENT_SEASON_YEAR,
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -148,13 +177,57 @@ async function getRosterData() {
 
     return owners.map((owner) => ({
       owner: owner.name,
-      roster: owner.rosters.map((r) => ({
-        slot: r.rosterSlot,
-        name: r.player.name,
-        points: r.player.scores.reduce((sum, s) => sum + s.points, 0),
-        playerId: r.player.id,
-        team: r.player.team,
-      })),
+      roster: owner.rosters.map((r) => {
+        const substitution = r.substitutions[0]; // Max one per roster per year
+        const hasSubstitution = !!substitution;
+        // Only show as "injured" if we're at or past the effective week
+        const isSubstitutionActive = hasSubstitution && currentWeek >= substitution.effectiveWeek;
+
+        // Calculate points with substitution logic
+        let points: number;
+        if (hasSubstitution) {
+          // Original player's points before effective week
+          const originalPointsBefore = r.player.scores
+            .filter((s) => s.week < substitution.effectiveWeek)
+            .reduce((sum, s) => sum + s.points, 0);
+
+          // Substitute's points from effective week onwards
+          const substitutePointsAfter = substitution.substitutePlayer.scores
+            .filter((s) => s.week >= substitution.effectiveWeek)
+            .reduce((sum, s) => sum + s.points, 0);
+
+          points = originalPointsBefore + substitutePointsAfter;
+        } else {
+          points = r.player.scores.reduce((sum, s) => sum + s.points, 0);
+        }
+
+        // Use substitute's team for elimination check if substitution is active
+        const activeTeam =
+          isSubstitutionActive && substitution ? substitution.substitutePlayer.team : r.player.team;
+
+        return {
+          slot: r.rosterSlot,
+          name: r.player.name,
+          points,
+          playerId: r.player.id,
+          team: r.player.team,
+          // The team that should be checked for elimination (substitute's team if active)
+          activeTeam,
+          // Substitution data for display - only mark as having substitution if active
+          hasSubstitution: isSubstitutionActive,
+          substitution: hasSubstitution
+            ? {
+                effectiveWeek: substitution.effectiveWeek,
+                reason: substitution.reason,
+                substitutePlayer: {
+                  id: substitution.substitutePlayer.id,
+                  name: substitution.substitutePlayer.name,
+                  team: substitution.substitutePlayer.team,
+                },
+              }
+            : null,
+        };
+      }),
     }));
   } catch (error) {
     console.error("Error fetching rosters:", error);
@@ -163,7 +236,12 @@ async function getRosterData() {
 }
 
 export default async function RostersPage() {
-  const [rosters, eliminatedTeams] = await Promise.all([getRosterData(), getEliminatedTeams()]);
+  // Get eliminated teams first to determine current week
+  const eliminatedTeams = await getEliminatedTeams();
+  const currentWeek = getCurrentWeek(eliminatedTeams.size);
+
+  // Then get roster data with currentWeek context
+  const rosters = await getRosterData(currentWeek);
 
   // Calculate totals and active players, sort by total points
   const rostersWithTotals = rosters
@@ -173,7 +251,13 @@ export default async function RostersPage() {
       let eliminatedPlayers = 0;
 
       for (const p of r.roster) {
-        const team = "team" in p ? (p.team as string | null | undefined) : null;
+        // Use activeTeam (substitute's team if substitution active) for elimination check
+        const team =
+          "activeTeam" in p
+            ? (p.activeTeam as string | null | undefined)
+            : "team" in p
+              ? (p.team as string | null | undefined)
+              : null;
         if (!team) {
           unknownPlayers++;
           activePlayers++; // Count unknown as active for now

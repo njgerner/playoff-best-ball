@@ -238,7 +238,13 @@ export function parseDefenseStats(summary: ESPNSummaryResponse): Map<string, Par
     // Get points allowed from header
     const competition = summary.header.competitions[0];
     const opponentComp = competition.competitors.find((c) => c.id !== team.id);
-    const pointsAllowed = opponentComp ? parseInt(opponentComp.score) : 0;
+    const rawPointsAllowed = opponentComp ? parseInt(opponentComp.score) : NaN;
+
+    // Skip this defense if we can't get valid score data (game hasn't started)
+    if (isNaN(rawPointsAllowed)) {
+      continue;
+    }
+    const pointsAllowed = rawPointsAllowed;
 
     // Parse defensive stats
     const sacksRaw = getOppStat("sacksYardsLost");

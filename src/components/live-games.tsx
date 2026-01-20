@@ -95,6 +95,8 @@ function StatChip({
 
 function PlayerStatLine({ player }: { player: GamePlayer }) {
   const posColor = POSITION_COLORS[player.position] || "text-[var(--chalk-white)]";
+  const isInjured = player.isInjured;
+  const isSubstitute = player.isSubstitute;
 
   // Build fantasy stat chips with point values
   const statChips: React.ReactNode[] = [];
@@ -189,13 +191,19 @@ function PlayerStatLine({ player }: { player: GamePlayer }) {
       className={`block p-3 rounded-lg hover:bg-[rgba(255,255,255,0.05)] transition-colors border ${
         player.isEliminated
           ? "border-red-900/30 bg-red-900/10"
-          : "border-transparent bg-[rgba(0,0,0,0.2)]"
+          : isInjured
+            ? "border-orange-900/30 bg-orange-900/10"
+            : isSubstitute
+              ? "border-blue-900/30 bg-blue-900/10"
+              : "border-transparent bg-[rgba(0,0,0,0.2)]"
       }`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-start gap-2 min-w-0">
           <span
-            className={`text-xs font-mono w-8 pt-0.5 ${player.isEliminated ? "text-red-400/50" : posColor}`}
+            className={`text-xs font-mono w-8 pt-0.5 ${
+              player.isEliminated || isInjured ? "opacity-50" : ""
+            } ${player.isEliminated ? "text-red-400/50" : posColor}`}
           >
             {player.position}
           </span>
@@ -203,16 +211,77 @@ function PlayerStatLine({ player }: { player: GamePlayer }) {
             <div className="flex items-center gap-2 flex-wrap">
               <span
                 className={`text-sm font-medium truncate ${
-                  player.isEliminated ? "text-[var(--chalk-muted)]" : "text-[var(--chalk-white)]"
+                  isInjured
+                    ? "text-[var(--chalk-muted)] line-through"
+                    : player.isEliminated
+                      ? "text-[var(--chalk-muted)]"
+                      : "text-[var(--chalk-white)]"
                 }`}
               >
                 {player.playerName}
               </span>
+              {/* INJ badge for injured players */}
+              {isInjured && (
+                <span
+                  className="text-[8px] text-orange-400 bg-orange-900/30 px-1 py-0.5 rounded"
+                  title={player.substitution?.reason || "Injured - out for playoffs"}
+                >
+                  INJ
+                </span>
+              )}
+              {/* SUB badge for substitute players */}
+              {isSubstitute && (
+                <span
+                  className="text-[8px] text-blue-400 bg-blue-900/30 px-1 py-0.5 rounded"
+                  title={`Substitute for ${player.originalPlayer?.name}`}
+                >
+                  SUB
+                </span>
+              )}
+              {player.isEliminated && !isInjured && (
+                <span className="text-[8px] text-red-400 bg-red-900/30 px-1 py-0.5 rounded">
+                  OUT
+                </span>
+              )}
               <span className="text-xs text-[var(--chalk-muted)]">({player.ownerName})</span>
             </div>
 
+            {/* Substitute player info for injured player */}
+            {isInjured && player.substitution && (
+              <div className="mt-1 text-xs text-orange-300 flex items-center gap-1">
+                <span className="text-[var(--chalk-muted)]">Replaced by:</span>
+                <span
+                  className="text-[var(--chalk-blue)] hover:underline cursor-pointer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.href = `/player/${player.substitution!.substitutePlayer.id}`;
+                  }}
+                >
+                  {player.substitution.substitutePlayer.name}
+                </span>
+              </div>
+            )}
+
+            {/* Original player info for substitute */}
+            {isSubstitute && player.originalPlayer && (
+              <div className="mt-1 text-xs text-blue-300 flex items-center gap-1">
+                <span className="text-[var(--chalk-muted)]">Filling in for:</span>
+                <span
+                  className="text-[var(--chalk-blue)] hover:underline cursor-pointer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.location.href = `/player/${player.originalPlayer!.id}`;
+                  }}
+                >
+                  {player.originalPlayer.name}
+                </span>
+              </div>
+            )}
+
             {/* Eliminated banner */}
-            {player.isEliminated && (
+            {player.isEliminated && !isInjured && !isSubstitute && (
               <div className="mt-1 text-xs text-red-400 flex items-center gap-1">
                 <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
                   <path
@@ -227,7 +296,7 @@ function PlayerStatLine({ player }: { player: GamePlayer }) {
 
             {/* Stats chips */}
             {statChips.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{statChips}</div>}
-            {statChips.length === 0 && !player.isEliminated && (
+            {statChips.length === 0 && !player.isEliminated && !isInjured && (
               <div className="mt-1 text-xs text-[var(--chalk-muted)]">No stats yet</div>
             )}
           </div>
@@ -237,7 +306,7 @@ function PlayerStatLine({ player }: { player: GamePlayer }) {
         <div className="text-right flex-shrink-0">
           <div
             className={`text-lg font-bold ${
-              player.isEliminated
+              player.isEliminated || isInjured
                 ? "text-[var(--chalk-muted)]"
                 : player.points > 0
                   ? "text-[var(--chalk-green)]"

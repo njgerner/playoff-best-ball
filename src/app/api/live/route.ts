@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     // Get eliminated teams
     const eliminatedTeams = await getEliminatedTeams();
 
-    // Get all owners with their rosters and player scores
+    // Get all owners with their rosters, player scores, and substitutions
     const owners = await prisma.owner.findMany({
       include: {
         rosters: {
@@ -31,6 +31,19 @@ export async function GET(request: Request) {
                 },
               },
             },
+            substitutions: {
+              where: { year },
+              include: {
+                substitutePlayer: {
+                  include: {
+                    scores: {
+                      where: { year },
+                      orderBy: { week: "asc" },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -39,8 +52,43 @@ export async function GET(request: Request) {
     // Transform data for the live view
     const rosters = owners.map((owner) => {
       const players = owner.rosters.map((roster) => {
-        const totalPoints = roster.player.scores.reduce((sum, s) => sum + s.points, 0);
+        const substitution = roster.substitutions[0]; // At most one per roster per year
+        const hasSubstitution = !!substitution;
+
+        let totalPoints: number;
+        let weeklyScores: { week: number; points: number }[];
+
+        if (hasSubstitution) {
+          // Combined scoring: original player before effectiveWeek + substitute from effectiveWeek onward
+          const originalPointsBefore = roster.player.scores
+            .filter((s) => s.week < substitution.effectiveWeek)
+            .reduce((sum, s) => sum + s.points, 0);
+          const substitutePointsAfter = substitution.substitutePlayer.scores
+            .filter((s) => s.week >= substitution.effectiveWeek)
+            .reduce((sum, s) => sum + s.points, 0);
+          totalPoints = originalPointsBefore + substitutePointsAfter;
+
+          // Combine weekly scores
+          const originalWeekly = roster.player.scores
+            .filter((s) => s.week < substitution.effectiveWeek)
+            .map((s) => ({ week: s.week, points: s.points }));
+          const substituteWeekly = substitution.substitutePlayer.scores
+            .filter((s) => s.week >= substitution.effectiveWeek)
+            .map((s) => ({ week: s.week, points: s.points }));
+          weeklyScores = [...originalWeekly, ...substituteWeekly].sort((a, b) => a.week - b.week);
+        } else {
+          totalPoints = roster.player.scores.reduce((sum, s) => sum + s.points, 0);
+          weeklyScores = roster.player.scores.map((s) => ({
+            week: s.week,
+            points: s.points,
+          }));
+        }
+
         const playerTeam = (roster.player.team || "").toUpperCase();
+        const subTeam = hasSubstitution
+          ? (substitution.substitutePlayer.team || "").toUpperCase()
+          : null;
+
         return {
           id: roster.player.id,
           name: roster.player.name,
@@ -48,11 +96,25 @@ export async function GET(request: Request) {
           team: roster.player.team,
           slot: roster.rosterSlot,
           points: totalPoints,
-          isEliminated: eliminatedTeams.has(playerTeam),
-          weeklyScores: roster.player.scores.map((s) => ({
-            week: s.week,
-            points: s.points,
-          })),
+          isEliminated: hasSubstitution
+            ? subTeam
+              ? eliminatedTeams.has(subTeam)
+              : false
+            : eliminatedTeams.has(playerTeam),
+          weeklyScores,
+          // Substitution info
+          hasSubstitution,
+          substitution: hasSubstitution
+            ? {
+                effectiveWeek: substitution.effectiveWeek,
+                reason: substitution.reason,
+                substitutePlayer: {
+                  id: substitution.substitutePlayer.id,
+                  name: substitution.substitutePlayer.name,
+                  team: substitution.substitutePlayer.team,
+                },
+              }
+            : null,
         };
       });
 

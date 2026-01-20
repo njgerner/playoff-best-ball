@@ -214,6 +214,25 @@ export interface GamePlayer {
     fumblesLost?: number;
   };
   points: number;
+  // Substitution info for injured players
+  hasSubstitution?: boolean;
+  isInjured?: boolean;
+  substitution?: {
+    effectiveWeek: number;
+    reason: string | null;
+    substitutePlayer: {
+      id: string;
+      name: string;
+      team: string | null;
+    };
+  } | null;
+  // For substitute players
+  isSubstitute?: boolean;
+  originalPlayer?: {
+    id: string;
+    name: string;
+    team: string | null;
+  };
 }
 
 export interface PlayoffGame {

@@ -3,6 +3,19 @@ import prisma from "@/lib/db";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 import { getEliminatedTeams } from "@/lib/espn/client";
 
+// Determine current week based on eliminated teams count
+function getCurrentWeek(eliminatedCount: number): number {
+  if (eliminatedCount < 6) {
+    return 1; // Wild Card
+  } else if (eliminatedCount < 10) {
+    return 2; // Divisional
+  } else if (eliminatedCount < 12) {
+    return 3; // Conference Championship
+  } else {
+    return 5; // Super Bowl
+  }
+}
+
 // GET /api/admin/rosters - Get all rosters with players
 export async function GET(request: NextRequest) {
   try {
@@ -22,6 +35,18 @@ export async function GET(request: NextRequest) {
                   },
                 },
               },
+              substitutions: {
+                where: { year },
+                include: {
+                  substitutePlayer: {
+                    include: {
+                      scores: {
+                        where: { year },
+                      },
+                    },
+                  },
+                },
+              },
             },
             orderBy: { rosterSlot: "asc" },
           },
@@ -31,13 +56,49 @@ export async function GET(request: NextRequest) {
       getEliminatedTeams(),
     ]);
 
+    // Determine current week based on eliminated teams
+    const currentWeek = getCurrentWeek(eliminatedTeams.size);
+
     // Transform data for the frontend
     const rostersData = owners.map((owner) => {
       const players = owner.rosters.map((roster) => {
-        const totalPoints = roster.player.scores.reduce((sum, s) => sum + s.points, 0);
-        const isEliminated = roster.player.team
-          ? eliminatedTeams.has(roster.player.team.toUpperCase())
-          : false;
+        const substitution = roster.substitutions[0]; // Max one per roster per year
+        const hasSubstitutionRecord = !!substitution;
+        // Only show as "injured/active substitution" if we're at or past the effective week
+        const isSubstitutionActive =
+          hasSubstitutionRecord && currentWeek >= substitution.effectiveWeek;
+
+        // Calculate points with substitution logic
+        let totalPoints: number;
+        let pointsBreakdown: { originalPoints: number; substitutePoints: number } | undefined;
+
+        if (hasSubstitutionRecord) {
+          // Original player's points before effective week
+          const originalPointsBefore = roster.player.scores
+            .filter((s) => s.week < substitution.effectiveWeek)
+            .reduce((sum, s) => sum + s.points, 0);
+
+          // Substitute's points from effective week onwards
+          const substitutePointsAfter = substitution.substitutePlayer.scores
+            .filter((s) => s.week >= substitution.effectiveWeek)
+            .reduce((sum, s) => sum + s.points, 0);
+
+          totalPoints = originalPointsBefore + substitutePointsAfter;
+          pointsBreakdown = {
+            originalPoints: originalPointsBefore,
+            substitutePoints: substitutePointsAfter,
+          };
+        } else {
+          totalPoints = roster.player.scores.reduce((sum, s) => sum + s.points, 0);
+        }
+
+        // Use substitute's team for elimination check if substitution is active
+        const activeTeam =
+          isSubstitutionActive && substitution
+            ? substitution.substitutePlayer.team
+            : roster.player.team;
+
+        const isEliminated = activeTeam ? eliminatedTeams.has(activeTeam.toUpperCase()) : false;
 
         return {
           rosterId: roster.id,
@@ -50,11 +111,29 @@ export async function GET(request: NextRequest) {
           totalPoints,
           isEliminated,
           hasEspnId: !!roster.player.espnId,
+          // Substitution data - hasSubstitution is true only when active
+          hasSubstitution: isSubstitutionActive,
+          substitution: hasSubstitutionRecord
+            ? {
+                id: substitution.id,
+                effectiveWeek: substitution.effectiveWeek,
+                reason: substitution.reason,
+                isActive: isSubstitutionActive,
+                substitutePlayer: {
+                  id: substitution.substitutePlayer.id,
+                  name: substitution.substitutePlayer.name,
+                  position: substitution.substitutePlayer.position,
+                  team: substitution.substitutePlayer.team,
+                  espnId: substitution.substitutePlayer.espnId,
+                },
+                pointsBreakdown,
+              }
+            : null,
         };
       });
 
       const totalPoints = players.reduce((sum, p) => sum + p.totalPoints, 0);
-      const activePlayers = players.filter((p) => !p.isEliminated).length;
+      const activePlayers = players.filter((p) => !p.isEliminated && !p.hasSubstitution).length;
 
       return {
         ownerId: owner.id,
@@ -69,6 +148,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       rosters: rostersData,
       year,
+      currentWeek,
       eliminatedTeams: Array.from(eliminatedTeams),
     });
   } catch (error) {

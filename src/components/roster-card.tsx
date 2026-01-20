@@ -3,13 +3,28 @@
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { PlayerRow } from "./player-row";
 
+interface SubstitutionData {
+  effectiveWeek: number;
+  reason?: string | null;
+  substitutePlayer: {
+    id: string;
+    name: string;
+    team?: string | null;
+  };
+}
+
 interface RosterPlayer {
   slot: string;
   name: string;
   points: number;
   playerId?: string;
   team?: string | null;
+  // The team to check for elimination (substitute's team if substitution is active)
+  activeTeam?: string | null;
   weeklyPoints?: { week: number; points: number }[];
+  // Substitution data
+  hasSubstitution?: boolean;
+  substitution?: SubstitutionData | null;
 }
 
 interface RosterCardProps {
@@ -76,9 +91,11 @@ export function RosterCard({
       <CardContent className={compact ? "pt-0" : ""}>
         <div className="space-y-0.5">
           {sortedRoster.map((player) => {
-            const hasTeam = player.team != null && player.team !== "";
+            // Use activeTeam (substitute's team if substitution active) for elimination check
+            const teamToCheck = player.activeTeam ?? player.team;
+            const hasTeam = teamToCheck != null && teamToCheck !== "";
             const isEliminated = hasTeam
-              ? eliminatedTeams.includes(player.team!.toUpperCase())
+              ? eliminatedTeams.includes(teamToCheck!.toUpperCase())
               : false;
             return (
               <PlayerRow
@@ -90,6 +107,8 @@ export function RosterCard({
                 compact={compact}
                 isEliminated={isEliminated}
                 teamUnknown={!hasTeam}
+                hasSubstitution={player.hasSubstitution}
+                substitution={player.substitution}
               />
             );
           })}

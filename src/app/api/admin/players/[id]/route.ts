@@ -50,6 +50,28 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });
     }
 
+    // Check if ESPN ID is already used by another player
+    if (espnId) {
+      const existingPlayer = await prisma.player.findUnique({
+        where: { espnId },
+      });
+
+      if (existingPlayer && existingPlayer.id !== id) {
+        return NextResponse.json(
+          {
+            error: "ESPN ID already in use",
+            message: `ESPN ID "${espnId}" is already assigned to player "${existingPlayer.name}" (${existingPlayer.id})`,
+            conflictingPlayer: {
+              id: existingPlayer.id,
+              name: existingPlayer.name,
+              team: existingPlayer.team,
+            },
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     const player = await prisma.player.update({
       where: { id },
       data: updateData,
@@ -61,6 +83,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     });
   } catch (error) {
     console.error("Error updating player:", error);
+
+    // Handle unique constraint error more gracefully
+    if (error instanceof Error && error.message.includes("Unique constraint")) {
+      return NextResponse.json(
+        { error: "ESPN ID is already in use by another player" },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json({ error: "Failed to update player" }, { status: 500 });
   }
 }

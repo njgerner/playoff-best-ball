@@ -69,18 +69,37 @@ export async function fetchAllPlayoffGames(
 
 /**
  * Fetch complete stats for all playoff games
+ * Returns completion status so consumers can filter incomplete games
  */
 export async function fetchAllPlayoffStats(
   weeks: number[] = [1, 2, 3, 5]
-): Promise<{ week: number; eventId: string; summary: ESPNSummaryResponse }[]> {
+): Promise<
+  {
+    week: number;
+    eventId: string;
+    summary: ESPNSummaryResponse;
+    isCompleted: boolean;
+    isInProgress: boolean;
+  }[]
+> {
   const allGames = await fetchAllPlayoffGames(weeks);
-  const results: { week: number; eventId: string; summary: ESPNSummaryResponse }[] = [];
+  const results: {
+    week: number;
+    eventId: string;
+    summary: ESPNSummaryResponse;
+    isCompleted: boolean;
+    isInProgress: boolean;
+  }[] = [];
 
   for (const { week, events } of allGames) {
     for (const event of events) {
       const summary = await fetchGameSummary(event.id);
       if (summary) {
-        results.push({ week, eventId: event.id, summary });
+        const isCompleted = event.status?.type?.completed ?? false;
+        const isInProgress =
+          event.status?.type?.state === "in" ||
+          (event.status?.type?.state === "pre" && (event.status?.period ?? 0) > 0);
+        results.push({ week, eventId: event.id, summary, isCompleted, isInProgress });
       }
     }
   }

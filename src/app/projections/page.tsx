@@ -66,6 +66,18 @@ interface SingleWeekPlayer {
   opponent: string | null;
   isEliminated?: boolean;
   isByeWeek?: boolean;
+  // Substitution info
+  hasSubstitution?: boolean;
+  isInjured?: boolean;
+  substitution?: {
+    effectiveWeek: number;
+    reason: string | null;
+    substitutePlayer: {
+      id: string;
+      name: string;
+      team: string | null;
+    };
+  } | null;
 }
 
 interface SingleWeekOwner {
@@ -854,31 +866,60 @@ function SingleWeekView({ data, odds }: { data: SingleWeekData; odds: OddsData |
                   <div
                     key={player.id}
                     className={`flex items-center justify-between py-1 px-2 rounded hover:bg-[var(--chalk-surface)] ${
-                      player.isEliminated ? "opacity-50" : ""
+                      player.isEliminated || player.isInjured ? "opacity-60" : ""
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="w-8 text-xs font-medium text-[var(--chalk-muted)]">
+                    <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                      <span
+                        className={`w-8 text-xs font-medium text-[var(--chalk-muted)] ${player.isInjured ? "opacity-50" : ""}`}
+                      >
                         {player.slot}
                       </span>
                       <Link
                         href={`/player/${player.id}`}
-                        className="text-sm text-[var(--chalk-text)] hover:text-[var(--chalk-blue)] transition-colors"
+                        className={`text-sm transition-colors truncate ${
+                          player.isInjured
+                            ? "text-[var(--chalk-muted)] line-through"
+                            : "text-[var(--chalk-text)] hover:text-[var(--chalk-blue)]"
+                        }`}
                       >
                         {player.name}
                       </Link>
-                      {player.isEliminated && (
-                        <span className="text-xs text-red-400 px-1 py-0.5 bg-red-900/30 rounded">
+                      {player.isInjured && (
+                        <span
+                          className="text-[8px] text-orange-400 bg-orange-900/30 px-1 py-0.5 rounded"
+                          title={player.substitution?.reason || "Injured - out for playoffs"}
+                        >
+                          INJ
+                        </span>
+                      )}
+                      {player.isEliminated && !player.isInjured && (
+                        <span className="text-[8px] text-red-400 px-1 py-0.5 bg-red-900/30 rounded">
                           OUT
                         </span>
                       )}
-                      {player.isByeWeek && (
-                        <span className="text-xs text-purple-400 px-1 py-0.5 bg-purple-900/30 rounded">
+                      {player.isByeWeek && !player.isInjured && (
+                        <span className="text-[8px] text-purple-400 px-1 py-0.5 bg-purple-900/30 rounded">
                           BYE
                         </span>
                       )}
+                      {/* Show substitute player */}
+                      {player.isInjured && player.substitution && (
+                        <span className="flex items-center gap-1 text-xs">
+                          <span className="text-[var(--chalk-muted)]">/</span>
+                          <Link
+                            href={`/player/${player.substitution.substitutePlayer.id}`}
+                            className="text-[var(--chalk-blue)] hover:text-[var(--chalk-pink)] hover:underline"
+                          >
+                            {player.substitution.substitutePlayer.name}
+                          </Link>
+                          <span className="text-[8px] text-blue-400 bg-blue-900/30 px-1 py-0.5 rounded">
+                            SUB
+                          </span>
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-3 text-sm">
+                    <div className="flex items-center gap-3 text-sm flex-shrink-0">
                       <span className="text-[var(--chalk-text)] w-12 text-right">
                         {player.actualPoints.toFixed(1)}
                       </span>

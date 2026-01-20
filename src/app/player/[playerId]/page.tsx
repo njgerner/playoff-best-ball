@@ -220,6 +220,19 @@ interface PlayerPageProps {
   params: Promise<{ playerId: string }>;
 }
 
+interface SubstitutionInfo {
+  type: "injured" | "substitute";
+  effectiveWeek: number;
+  reason: string | null;
+  linkedPlayer: {
+    id: string;
+    name: string;
+    position: string;
+    team: string | null;
+  };
+  ownerName: string;
+}
+
 async function getPlayerData(playerId: string) {
   try {
     const player = await prisma.player.findUnique({
@@ -232,6 +245,22 @@ async function getPlayerData(playerId: string) {
         rosters: {
           where: { year: CURRENT_SEASON_YEAR },
           include: { owner: true },
+        },
+        // Check if this player is the original (injured) player in a substitution
+        substitutionsAsOriginal: {
+          where: { year: CURRENT_SEASON_YEAR },
+          include: {
+            substitutePlayer: true,
+            roster: { include: { owner: true } },
+          },
+        },
+        // Check if this player is the substitute player
+        substitutionsAsSubstitute: {
+          where: { year: CURRENT_SEASON_YEAR },
+          include: {
+            originalPlayer: true,
+            roster: { include: { owner: true } },
+          },
         },
       },
     });
@@ -268,10 +297,91 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
   const eliminatedTeams = await getEliminatedTeams();
   const isEliminated = player.team ? eliminatedTeams.has(player.team.toUpperCase()) : false;
 
+  // Check substitution status
+  const isInjuredOriginal = player.substitutionsAsOriginal.length > 0;
+  const isSubstitutePlayer = player.substitutionsAsSubstitute.length > 0;
+  const injuredSubstitution = player.substitutionsAsOriginal[0];
+  const substituteForSubstitution = player.substitutionsAsSubstitute[0];
+
   return (
     <div className="space-y-6">
+      {/* Injured Player Banner */}
+      {isInjuredOriginal && injuredSubstitution && (
+        <div className="bg-orange-900/30 border border-orange-500/50 rounded-lg p-4 flex items-start gap-3">
+          <svg
+            className="w-6 h-6 text-orange-400 flex-shrink-0 mt-0.5"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <div>
+            <div className="text-orange-400 font-bold">Injured - Out for Playoffs</div>
+            <div className="text-orange-300 text-sm">
+              {injuredSubstitution.reason
+                ? `${player.name} is out due to: ${injuredSubstitution.reason}.`
+                : `${player.name} has been ruled out for the remainder of the playoffs.`}{" "}
+              Replaced by{" "}
+              <Link
+                href={`/player/${injuredSubstitution.substitutePlayer.id}`}
+                className="text-blue-400 hover:underline font-medium"
+              >
+                {injuredSubstitution.substitutePlayer.name}
+              </Link>{" "}
+              starting from{" "}
+              {WEEK_LABELS[injuredSubstitution.effectiveWeek] ||
+                `Week ${injuredSubstitution.effectiveWeek}`}
+              .
+            </div>
+            <div className="text-orange-300 text-xs mt-1">
+              Owner: {injuredSubstitution.roster.owner.name}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Substitute Player Banner */}
+      {isSubstitutePlayer && substituteForSubstitution && (
+        <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 flex items-start gap-3">
+          <svg
+            className="w-6 h-6 text-blue-400 flex-shrink-0 mt-0.5"
+            fill="currentColor"
+            viewBox="0 0 20 20"
+          >
+            <path
+              fillRule="evenodd"
+              d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z"
+              clipRule="evenodd"
+            />
+          </svg>
+          <div>
+            <div className="text-blue-400 font-bold">Substitute Player</div>
+            <div className="text-blue-300 text-sm">
+              {player.name} is filling in for injured player{" "}
+              <Link
+                href={`/player/${substituteForSubstitution.originalPlayer.id}`}
+                className="text-orange-400 hover:underline font-medium"
+              >
+                {substituteForSubstitution.originalPlayer.name}
+              </Link>{" "}
+              starting from{" "}
+              {WEEK_LABELS[substituteForSubstitution.effectiveWeek] ||
+                `Week ${substituteForSubstitution.effectiveWeek}`}
+              .
+            </div>
+            <div className="text-blue-300 text-xs mt-1">
+              Owner: {substituteForSubstitution.roster.owner.name}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Elimination Banner */}
-      {isEliminated && (
+      {isEliminated && !isInjuredOriginal && (
         <div className="bg-red-900/30 border border-red-500/50 rounded-lg p-4 flex items-start gap-3">
           <svg
             className="w-6 h-6 text-red-400 flex-shrink-0 mt-0.5"
@@ -315,7 +425,9 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
             {player.name}
           </h1>
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-2">
-            <span className={`chalk-badge ${badgeClass} ${isEliminated ? "opacity-50" : ""}`}>
+            <span
+              className={`chalk-badge ${badgeClass} ${isEliminated || isInjuredOriginal ? "opacity-50" : ""}`}
+            >
               {player.position}
             </span>
             {player.team && (
@@ -324,9 +436,19 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
               >
                 <TeamLogoSmall abbreviation={player.team} />
                 {player.team}
-                {isEliminated && (
+                {isEliminated && !isInjuredOriginal && (
                   <span className="ml-1 text-xs bg-red-900/50 px-1.5 py-0.5 rounded">OUT</span>
                 )}
+              </span>
+            )}
+            {isInjuredOriginal && (
+              <span className="text-xs bg-orange-900/50 text-orange-400 px-1.5 py-0.5 rounded">
+                INJ
+              </span>
+            )}
+            {isSubstitutePlayer && (
+              <span className="text-xs bg-blue-900/50 text-blue-400 px-1.5 py-0.5 rounded">
+                SUB
               </span>
             )}
             {owner && (
