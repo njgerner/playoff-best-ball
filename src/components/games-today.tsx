@@ -30,6 +30,18 @@ interface GameInfo {
     score: number;
   };
   hasRosteredPlayers?: boolean;
+  // Enhanced data from odds and weather APIs
+  weather?: {
+    temperature: number;
+    windSpeed: number;
+    windDirection: string;
+    condition: string;
+    isDome: boolean;
+    icon: string;
+    impact: { level: string; description: string };
+  };
+  homeWinProb?: number;
+  awayWinProb?: number;
 }
 
 interface GamesTodayProps {
@@ -60,6 +72,20 @@ function formatGameTime(dateString: string): string {
   });
 }
 
+// Weather impact color based on level
+function getWeatherImpactColor(level: string): string {
+  switch (level) {
+    case "high":
+      return "text-red-400";
+    case "medium":
+      return "text-yellow-400";
+    case "low":
+      return "text-blue-300";
+    default:
+      return "text-[var(--chalk-muted)]";
+  }
+}
+
 function GameCard({ game, rosteredTeams }: { game: GameInfo; rosteredTeams?: Set<string> }) {
   const isLive = game.status.state === "in";
   const isFinal = game.status.completed;
@@ -72,6 +98,10 @@ function GameCard({ game, rosteredTeams }: { game: GameInfo; rosteredTeams?: Set
   const hasHome = rosteredTeams?.has(game.homeTeam.abbreviation.toUpperCase());
   const hasPlayers = hasAway || hasHome;
 
+  // Calculate win probability bar widths
+  const awayProb = game.awayWinProb ?? 50;
+  const homeProb = game.homeWinProb ?? 50;
+
   return (
     <Link
       href={`/game/${game.eventId}`}
@@ -83,11 +113,22 @@ function GameCard({ game, rosteredTeams }: { game: GameInfo; rosteredTeams?: Set
             : "bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.1)] hover:border-[rgba(255,255,255,0.2)]"
       }`}
     >
-      {/* Header: Week + Status */}
+      {/* Header: Week + Status + Weather */}
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] text-[var(--chalk-muted)] uppercase tracking-wide">
-          {WEEK_LABELS[game.week] || `Week ${game.week}`}
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[10px] text-[var(--chalk-muted)] uppercase tracking-wide">
+            {WEEK_LABELS[game.week] || `Week ${game.week}`}
+          </span>
+          {/* Weather indicator */}
+          {game.weather && (
+            <span
+              className={`text-xs ${getWeatherImpactColor(game.weather.impact.level)}`}
+              title={`${game.weather.temperature}°F, ${game.weather.windSpeed}mph ${game.weather.windDirection} - ${game.weather.impact.description}`}
+            >
+              {game.weather.icon}
+            </span>
+          )}
+        </div>
         {isLive && (
           <span className="flex items-center gap-1 text-[10px] text-green-400 font-medium">
             <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse"></span>
@@ -163,6 +204,23 @@ function GameCard({ game, rosteredTeams }: { game: GameInfo; rosteredTeams?: Set
           {!isScheduled ? game.homeTeam.score : "-"}
         </span>
       </div>
+
+      {/* Win Probability Bar - Show for scheduled or live games */}
+      {(isScheduled || isLive) && (game.awayWinProb || game.homeWinProb) && (
+        <div className="mt-2 pt-2 border-t border-dashed border-[rgba(255,255,255,0.1)]">
+          <div className="flex items-center gap-1 text-[9px] text-[var(--chalk-muted)] mb-1">
+            <span>{Math.round(awayProb)}%</span>
+            <div className="flex-1 h-1.5 bg-[rgba(255,255,255,0.1)] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[var(--chalk-blue)] to-[var(--chalk-green)]"
+                style={{ width: `${awayProb}%` }}
+              />
+            </div>
+            <span>{Math.round(homeProb)}%</span>
+          </div>
+          <div className="text-[8px] text-center text-[var(--chalk-muted)]">Win Probability</div>
+        </div>
+      )}
     </Link>
   );
 }
@@ -305,14 +363,18 @@ export function GamesToday({ rosteredTeams, onRefresh, onLiveGamesChange }: Game
       <div className="flex items-center gap-4 mt-3 pt-3 border-t border-dashed border-[var(--chalk-muted)]/30 text-[10px] text-[var(--chalk-muted)]">
         <span className="flex items-center gap-1">
           <span className="w-1.5 h-1.5 bg-[var(--chalk-blue)] rounded-full"></span>
-          Rostered players
+          Rostered
         </span>
         <span className="flex items-center gap-1">
           <span className="w-1.5 h-1.5 bg-green-400 rounded-full"></span>
-          Live game
+          Live
+        </span>
+        <span className="flex items-center gap-1" title="Weather impact: none, low, medium, high">
+          <span className="text-yellow-400">*</span>
+          Weather
         </span>
         <Link href="/schedule" className="ml-auto text-[var(--chalk-blue)] hover:underline">
-          View full schedule
+          Full schedule
         </Link>
       </div>
     </div>

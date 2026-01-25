@@ -6,6 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notFound } from "next/navigation";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 import { getEliminatedTeams } from "@/lib/espn/client";
+import { Position } from "@/types";
+import { advancedBlendProjections, aggregatePlayerProps } from "@/lib/props/calculator";
+import { fetchStadiumWeather } from "@/lib/weather/client";
+import { PropType } from "@prisma/client";
 
 // Player headshot component
 function PlayerHeadshot({
@@ -216,6 +220,239 @@ const WEEK_LABELS: Record<number, string> = {
   5: "Super Bowl",
 };
 
+// Prop type labels
+const PROP_LABELS: Record<string, string> = {
+  PASS_YARDS: "Passing Yards",
+  PASS_TDS: "Passing TDs",
+  RUSH_YARDS: "Rushing Yards",
+  REC_YARDS: "Receiving Yards",
+  RECEPTIONS: "Receptions",
+  ANYTIME_TD: "Anytime TD",
+};
+
+// Props section component
+interface PlayerProp {
+  propType: string;
+  line: number;
+  overOdds: number;
+  underOdds: number;
+  impliedOver: number;
+  week: number;
+  bookmaker: string | null;
+}
+
+// Projection section component
+interface ProjectionSectionProps {
+  projectedPoints: number;
+  expectedValue: number | null;
+  winProbability: number | null;
+  opponent: string | null;
+  confidence: "high" | "medium" | "low";
+  source: string;
+  propWeight: number;
+  historicalWeight: number;
+  propBasedPoints: number | null;
+  historicalPoints: number | null;
+  weatherImpact?: {
+    applied: boolean;
+    impact: string;
+    multiplier: number;
+    conditions?: string;
+  };
+  range: { low: number; median: number; high: number };
+  gamesPlayed: number;
+  propCount: number;
+}
+
+function ProjectionSection({
+  projectedPoints,
+  expectedValue,
+  winProbability,
+  opponent,
+  confidence,
+  source,
+  propWeight,
+  historicalWeight,
+  propBasedPoints,
+  historicalPoints,
+  weatherImpact,
+  range,
+  gamesPlayed,
+  propCount,
+}: ProjectionSectionProps) {
+  const confidenceColors = {
+    high: "text-green-400",
+    medium: "text-yellow-400",
+    low: "text-red-400",
+  };
+
+  return (
+    <div className="chalk-box p-4">
+      <h3 className="text-sm font-bold text-[var(--chalk-white)] mb-3 flex items-center justify-between">
+        <span>Projection & Expected Value</span>
+        <span className={`text-xs font-normal ${confidenceColors[confidence]}`}>
+          {confidence.charAt(0).toUpperCase() + confidence.slice(1)} Confidence
+        </span>
+      </h3>
+
+      {/* Main projection numbers */}
+      <div className="grid grid-cols-3 gap-4 mb-4">
+        <div className="text-center p-3 bg-[rgba(0,0,0,0.2)] rounded-lg">
+          <div className="text-xs text-[var(--chalk-muted)] mb-1">Projected</div>
+          <div className="text-2xl font-bold text-[var(--chalk-yellow)]">
+            {projectedPoints.toFixed(1)}
+          </div>
+          <div className="text-[10px] text-[var(--chalk-muted)]">pts</div>
+        </div>
+        <div className="text-center p-3 bg-[rgba(0,0,0,0.2)] rounded-lg">
+          <div className="text-xs text-[var(--chalk-muted)] mb-1">Win Prob</div>
+          <div className="text-2xl font-bold text-[var(--chalk-blue)]">
+            {winProbability !== null ? `${Math.round(winProbability * 100)}%` : "-"}
+          </div>
+          {opponent && <div className="text-[10px] text-[var(--chalk-muted)]">vs {opponent}</div>}
+        </div>
+        <div className="text-center p-3 bg-[rgba(0,0,0,0.2)] rounded-lg">
+          <div className="text-xs text-[var(--chalk-muted)] mb-1">Expected Value</div>
+          <div className="text-2xl font-bold text-[var(--chalk-green)]">
+            {expectedValue !== null ? expectedValue.toFixed(1) : "-"}
+          </div>
+          <div className="text-[10px] text-[var(--chalk-muted)]">proj &times; win%</div>
+        </div>
+      </div>
+
+      {/* Projection range */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between text-xs text-[var(--chalk-muted)] mb-1">
+          <span>Projection Range</span>
+          <span>
+            Low {range.low.toFixed(1)} - High {range.high.toFixed(1)}
+          </span>
+        </div>
+        <div className="h-2 bg-gray-700 rounded-full relative overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-red-500/30 via-yellow-500/30 to-green-500/30" />
+          <div
+            className="absolute top-0 bottom-0 w-1 bg-[var(--chalk-yellow)]"
+            style={{
+              left: `${((projectedPoints - range.low) / (range.high - range.low)) * 100}%`,
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Source breakdown */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between text-xs mb-1">
+          <span className="text-[var(--chalk-muted)]">Source Blend</span>
+          <span className="text-[var(--chalk-white)]">
+            {Math.round(propWeight * 100)}% props / {Math.round(historicalWeight * 100)}% historical
+          </span>
+        </div>
+        <div className="h-2 bg-gray-700 rounded-full overflow-hidden flex">
+          {propWeight > 0 && (
+            <div
+              className="h-full bg-[var(--chalk-blue)]"
+              style={{ width: `${propWeight * 100}%` }}
+            />
+          )}
+          {historicalWeight > 0 && (
+            <div
+              className="h-full bg-[var(--chalk-green)]"
+              style={{ width: `${historicalWeight * 100}%` }}
+            />
+          )}
+        </div>
+        <div className="flex justify-between text-[10px] text-[var(--chalk-muted)] mt-1">
+          <span>
+            Props: {propBasedPoints?.toFixed(1) ?? "N/A"} pts ({propCount} lines)
+          </span>
+          <span>
+            Historical: {historicalPoints?.toFixed(1) ?? "N/A"} pts ({gamesPlayed} games)
+          </span>
+        </div>
+      </div>
+
+      {/* Weather impact */}
+      {weatherImpact && weatherImpact.applied && (
+        <div className="flex items-center justify-between text-xs p-2 bg-yellow-900/20 border border-yellow-500/30 rounded">
+          <span className="text-yellow-400">Weather Adjustment: {weatherImpact.impact} impact</span>
+          <span className="text-[var(--chalk-muted)]">
+            {Math.round((1 - weatherImpact.multiplier) * 100)}% reduction
+            {weatherImpact.conditions && ` (${weatherImpact.conditions})`}
+          </span>
+        </div>
+      )}
+
+      {/* Methodology note */}
+      <div className="mt-3 pt-3 border-t border-dashed border-[rgba(255,255,255,0.1)] text-[10px] text-[var(--chalk-muted)]">
+        {source === "prop" && "Projection based primarily on Vegas betting prop lines."}
+        {source === "historical" && "Projection based on playoff performance average."}
+        {source === "blended" && "Projection blends Vegas props with playoff performance history."}
+      </div>
+    </div>
+  );
+}
+
+function PropsSection({ props, weekLabel }: { props: PlayerProp[]; weekLabel?: string }) {
+  if (props.length === 0) return null;
+
+  // Group props by week
+  const propsByWeek = props.reduce(
+    (acc, prop) => {
+      const week = prop.week;
+      if (!acc[week]) acc[week] = [];
+      acc[week].push(prop);
+      return acc;
+    },
+    {} as Record<number, PlayerProp[]>
+  );
+
+  return (
+    <div className="chalk-box p-4">
+      <h3 className="text-sm font-bold text-[var(--chalk-white)] mb-3 flex items-center gap-2">
+        <span>Betting Props</span>
+        <span className="text-[10px] text-[var(--chalk-muted)] font-normal">from sportsbooks</span>
+      </h3>
+      <div className="space-y-4">
+        {Object.entries(propsByWeek).map(([week, weekProps]) => (
+          <div key={week}>
+            <div className="text-xs text-[var(--chalk-blue)] mb-2">
+              {WEEK_LABELS[parseInt(week)] || `Week ${week}`}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {weekProps.map((prop, idx) => {
+                const label = PROP_LABELS[prop.propType] || prop.propType;
+                const impliedPct = Math.round(prop.impliedOver * 100);
+                return (
+                  <div
+                    key={`${prop.propType}-${idx}`}
+                    className="flex items-center justify-between p-2 bg-[rgba(0,0,0,0.2)] rounded border border-[rgba(255,255,255,0.1)]"
+                  >
+                    <div>
+                      <div className="text-xs text-[var(--chalk-muted)]">{label}</div>
+                      <div className="text-sm font-bold text-[var(--chalk-white)]">
+                        {prop.propType === "ANYTIME_TD" ? "Yes" : `O/U ${prop.line}`}
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-xs text-[var(--chalk-muted)]">Implied</div>
+                      <div className="text-sm font-bold text-[var(--chalk-green)]">
+                        {impliedPct}%
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 pt-3 border-t border-dashed border-[rgba(255,255,255,0.1)] text-[10px] text-[var(--chalk-muted)]">
+        Lines from The Odds API. Implied probability shows likelihood of hitting the over.
+      </div>
+    </div>
+  );
+}
+
 interface PlayerPageProps {
   params: Promise<{ playerId: string }>;
 }
@@ -231,6 +468,14 @@ interface SubstitutionInfo {
     team: string | null;
   };
   ownerName: string;
+}
+
+// Determine current playoff week based on eliminated teams
+function getCurrentPlayoffWeek(eliminatedCount: number): number {
+  if (eliminatedCount < 6) return 1; // Wild Card
+  if (eliminatedCount < 10) return 2; // Divisional
+  if (eliminatedCount < 12) return 3; // Conference
+  return 5; // Super Bowl
 }
 
 async function getPlayerData(playerId: string) {
@@ -262,12 +507,33 @@ async function getPlayerData(playerId: string) {
             roster: { include: { owner: true } },
           },
         },
+        // Player props for betting lines
+        props: {
+          where: { year: CURRENT_SEASON_YEAR },
+          orderBy: [{ week: "asc" }, { propType: "asc" }],
+        },
       },
     });
 
     return player;
   } catch (error) {
     console.error("Error fetching player:", error);
+    return null;
+  }
+}
+
+async function getTeamOdds(team: string, week: number) {
+  try {
+    const odds = await prisma.teamOdds.findFirst({
+      where: {
+        team: team.toUpperCase(),
+        year: CURRENT_SEASON_YEAR,
+        week,
+      },
+    });
+    return odds;
+  } catch (error) {
+    console.error("Error fetching team odds:", error);
     return null;
   }
 }
@@ -302,6 +568,63 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
   const isSubstitutePlayer = player.substitutionsAsSubstitute.length > 0;
   const injuredSubstitution = player.substitutionsAsOriginal[0];
   const substituteForSubstitution = player.substitutionsAsSubstitute[0];
+
+  // Calculate enhanced projection if player is still active
+  let projectionData: ReturnType<typeof advancedBlendProjections> | null = null;
+  let teamOdds: Awaited<ReturnType<typeof getTeamOdds>> | null = null;
+  let opponent: string | null = null;
+
+  if (!isEliminated && !isInjuredOriginal && player.team) {
+    // Determine current playoff week
+    const currentWeek = getCurrentPlayoffWeek(eliminatedTeams.size);
+
+    // Get team odds for this week
+    teamOdds = await getTeamOdds(player.team, currentWeek);
+    opponent = teamOdds?.opponent ?? null;
+
+    // Get props for this week
+    const currentWeekProps = player.props.filter((p) => p.week === currentWeek);
+
+    // Aggregate props into projection
+    const propData =
+      currentWeekProps.length > 0
+        ? aggregatePlayerProps(
+            currentWeekProps.map((p) => ({ propType: p.propType, line: p.line })),
+            player.position as Position
+          )
+        : { projection: {}, points: 0, propCount: 0 };
+
+    // Get historical scores for recency-weighted average
+    const historicalScores = player.scores.map((s) => ({
+      week: s.week,
+      points: s.points,
+    }));
+
+    // Fetch weather data if we have opponent info
+    let weather: Awaited<ReturnType<typeof fetchStadiumWeather>> | null = null;
+    if (opponent) {
+      // Use game time from odds if available, else approximate to tomorrow
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const gameTime = teamOdds?.gameTime ?? tomorrow;
+      // Higher seed usually hosts in playoffs, use opponent as home team assumption
+      weather = await fetchStadiumWeather(opponent, gameTime);
+    }
+
+    // Calculate enhanced projection
+    projectionData = advancedBlendProjections(
+      {
+        points: propData.points > 0 ? propData.points : null,
+        propCount: propData.propCount,
+        props: propData.projection,
+        updatedAt: currentWeekProps[0]?.updatedAt ?? undefined,
+      },
+      { scores: historicalScores },
+      player.position as Position,
+      weather,
+      teamOdds?.winProb ?? null
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -475,6 +798,35 @@ export default async function PlayerPage({ params }: PlayerPageProps) {
       {player.scores.length > 0 && (
         <StatsSection position={player.position} scores={player.scores} />
       )}
+
+      {/* Enhanced Projection */}
+      {projectionData && (
+        <ProjectionSection
+          projectedPoints={projectionData.projectedPoints}
+          expectedValue={projectionData.expectedValue}
+          winProbability={teamOdds?.winProb ?? null}
+          opponent={opponent}
+          confidence={projectionData.confidence.level}
+          source={
+            projectionData.sources.propWeight === 1
+              ? "prop"
+              : projectionData.sources.historicalWeight === 1
+                ? "historical"
+                : "blended"
+          }
+          propWeight={projectionData.sources.propWeight}
+          historicalWeight={projectionData.sources.historicalWeight}
+          propBasedPoints={projectionData.sources.propBased}
+          historicalPoints={projectionData.sources.historicalAvg}
+          weatherImpact={projectionData.adjustments.weather}
+          range={projectionData.range}
+          gamesPlayed={projectionData.dataFreshness.historicalGamesCount}
+          propCount={projectionData.props ? Object.keys(projectionData.props).length : 0}
+        />
+      )}
+
+      {/* Player Props / Betting Lines */}
+      {player.props && player.props.length > 0 && <PropsSection props={player.props} />}
 
       {/* Season Summary */}
       <Card>

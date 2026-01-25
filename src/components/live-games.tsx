@@ -4,9 +4,29 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 import { PlayoffGame, GamePlayer } from "@/types";
+import { WeatherIndicator, PropSummary } from "./prop-progress-bar";
+
+// Enhanced types from games API
+interface EnhancedPlayoffGame extends PlayoffGame {
+  weather?: {
+    temperature: number;
+    windSpeed: number;
+    windDirection: string;
+    condition: string;
+    isDome: boolean;
+    icon: string;
+    impact: { level: string; description: string };
+  };
+  homeWinProb?: number;
+  awayWinProb?: number;
+}
+
+interface EnhancedGamePlayer extends GamePlayer {
+  props?: { propType: string; line: number }[];
+}
 
 interface LiveGamesData {
-  games: PlayoffGame[];
+  games: EnhancedPlayoffGame[];
   eliminatedTeams: string[];
   week: number;
   year: number;
@@ -93,7 +113,13 @@ function StatChip({
   );
 }
 
-function PlayerStatLine({ player }: { player: GamePlayer }) {
+function PlayerStatLine({
+  player,
+  gameProgress,
+}: {
+  player: EnhancedGamePlayer;
+  gameProgress?: number;
+}) {
   const posColor = POSITION_COLORS[player.position] || "text-[var(--chalk-white)]";
   const isInjured = player.isInjured;
   const isSubstitute = player.isSubstitute;
@@ -299,6 +325,15 @@ function PlayerStatLine({ player }: { player: GamePlayer }) {
             {statChips.length === 0 && !player.isEliminated && !isInjured && (
               <div className="mt-1 text-xs text-[var(--chalk-muted)]">No stats yet</div>
             )}
+
+            {/* Prop lines progress */}
+            {player.props && player.props.length > 0 && !player.isEliminated && !isInjured && (
+              <PropSummary
+                props={player.props}
+                currentStats={player.stats}
+                gameProgress={gameProgress}
+              />
+            )}
           </div>
         </div>
 
@@ -322,7 +357,13 @@ function PlayerStatLine({ player }: { player: GamePlayer }) {
   );
 }
 
-function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeams: string[] }) {
+function GameCard({
+  game,
+  eliminatedTeams,
+}: {
+  game: EnhancedPlayoffGame;
+  eliminatedTeams: string[];
+}) {
   const awayWinning = game.awayTeam.score > game.homeTeam.score;
   const homeWinning = game.homeTeam.score > game.awayTeam.score;
   const isLive = game.status.state === "in";
@@ -331,26 +372,46 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
   const awayEliminated = eliminatedTeams.includes(game.awayTeam.abbreviation.toUpperCase());
   const homeEliminated = eliminatedTeams.includes(game.homeTeam.abbreviation.toUpperCase());
 
-  // Group players by team
+  // Group players by team (cast to enhanced type)
   const awayPlayers = game.players.filter(
     (p) => p.team.toUpperCase() === game.awayTeam.abbreviation.toUpperCase()
-  );
+  ) as EnhancedGamePlayer[];
   const homePlayers = game.players.filter(
     (p) => p.team.toUpperCase() === game.homeTeam.abbreviation.toUpperCase()
-  );
+  ) as EnhancedGamePlayer[];
 
   // Calculate team fantasy points
   const awayFantasyPts = awayPlayers.reduce((sum, p) => sum + p.points, 0);
   const homeFantasyPts = homePlayers.reduce((sum, p) => sum + p.points, 0);
+
+  // Calculate game progress for prop tracking (0-1)
+  const gameProgress =
+    isLive && game.status.period
+      ? Math.min(game.status.period / 4, 1)
+      : game.status.completed
+        ? 1
+        : 0;
 
   return (
     <div className="chalk-box overflow-hidden">
       {/* Game Header */}
       <div className="p-3 sm:p-4 border-b border-[rgba(255,255,255,0.1)]">
         <div className="flex items-center justify-between mb-2">
-          <span className="text-xs text-[var(--chalk-muted)]">
-            {WEEK_LABELS[game.week] || `Week ${game.week}`}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-[var(--chalk-muted)]">
+              {WEEK_LABELS[game.week] || `Week ${game.week}`}
+            </span>
+            {/* Weather indicator */}
+            {game.weather && (
+              <WeatherIndicator
+                temperature={game.weather.temperature}
+                windSpeed={game.weather.windSpeed}
+                condition={game.weather.condition}
+                isDome={game.weather.isDome}
+                compact
+              />
+            )}
+          </div>
           <GameStatusBadge status={game.status} />
         </div>
 
@@ -470,7 +531,11 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
                   </span>
                 </div>
                 {awayPlayers.map((player) => (
-                  <PlayerStatLine key={player.playerId} player={player} />
+                  <PlayerStatLine
+                    key={player.playerId}
+                    player={player}
+                    gameProgress={gameProgress}
+                  />
                 ))}
               </div>
             )}
@@ -499,7 +564,11 @@ function GameCard({ game, eliminatedTeams }: { game: PlayoffGame; eliminatedTeam
                   </span>
                 </div>
                 {homePlayers.map((player) => (
-                  <PlayerStatLine key={player.playerId} player={player} />
+                  <PlayerStatLine
+                    key={player.playerId}
+                    player={player}
+                    gameProgress={gameProgress}
+                  />
                 ))}
               </div>
             )}

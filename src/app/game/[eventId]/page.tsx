@@ -3,8 +3,15 @@ import Image from "next/image";
 import { notFound } from "next/navigation";
 import { fetchScoreboard, fetchGameSummary, getEliminatedTeams } from "@/lib/espn/client";
 import { parsePlayerStats, parseDefenseStats, calculateTotalPoints } from "@/lib/espn";
+import {
+  fetchStadiumWeather,
+  getWeatherIcon,
+  getWeatherImpact,
+  type GameWeatherData,
+} from "@/lib/weather/client";
 import prisma from "@/lib/db";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
+import { PropType } from "@prisma/client";
 
 // Server-side team logo helper (simpler than client component for SSR)
 function TeamLogoServer({ abbreviation, size = 48 }: { abbreviation: string; size?: number }) {
@@ -338,6 +345,178 @@ function formatQuarter(period?: number): string {
   return `OT${period - 4 > 1 ? period - 4 : ""}`;
 }
 
+// Weather display component
+function WeatherSection({ weather }: { weather: GameWeatherData | null }) {
+  if (!weather) return null;
+
+  const icon = getWeatherIcon(weather);
+  const impact = getWeatherImpact(weather);
+
+  const impactColors: Record<string, string> = {
+    high: "text-red-400 bg-red-900/20 border-red-500/30",
+    medium: "text-yellow-400 bg-yellow-900/20 border-yellow-500/30",
+    low: "text-blue-300 bg-blue-900/20 border-blue-500/30",
+    none: "text-[var(--chalk-muted)] bg-[rgba(255,255,255,0.05)] border-[rgba(255,255,255,0.1)]",
+  };
+
+  const colorClass = impactColors[impact.level] || impactColors.none;
+
+  return (
+    <div className={`rounded-lg border p-4 ${colorClass}`}>
+      <div className="flex items-center gap-4">
+        <div className="text-3xl">{icon}</div>
+        <div className="flex-1">
+          <div className="flex items-center gap-3 text-sm mb-1">
+            {weather.isDome ? (
+              <span className="font-medium">Dome Stadium</span>
+            ) : (
+              <>
+                <span className="font-medium">{weather.temperature}°F</span>
+                <span>|</span>
+                <span>
+                  Wind: {weather.windSpeed} mph {weather.windDirection}
+                </span>
+                <span>|</span>
+                <span>{weather.condition}</span>
+              </>
+            )}
+          </div>
+          {!weather.isDome && (
+            <div className="text-xs opacity-80">Fantasy Impact: {impact.description}</div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Team odds display component
+interface TeamOddsData {
+  team: string;
+  opponent: string;
+  winProb: number;
+  moneyline: number | null;
+}
+
+function TeamOddsSection({
+  awayTeam,
+  homeTeam,
+  awayOdds,
+  homeOdds,
+}: {
+  awayTeam: string;
+  homeTeam: string;
+  awayOdds: TeamOddsData | null;
+  homeOdds: TeamOddsData | null;
+}) {
+  if (!awayOdds && !homeOdds) return null;
+
+  const awayWinProb = awayOdds?.winProb ?? (homeOdds ? 1 - homeOdds.winProb : 0.5);
+  const homeWinProb = homeOdds?.winProb ?? (awayOdds ? 1 - awayOdds.winProb : 0.5);
+
+  const formatMoneyline = (odds: number | null | undefined): string => {
+    if (odds === null || odds === undefined) return "-";
+    return odds > 0 ? `+${odds}` : String(odds);
+  };
+
+  return (
+    <div className="chalk-box p-4">
+      <h3 className="text-sm font-bold text-[var(--chalk-white)] mb-3 flex items-center gap-2">
+        <span>Win Probability</span>
+        <span className="text-[10px] text-[var(--chalk-muted)] font-normal">
+          from betting lines
+        </span>
+      </h3>
+      <div className="flex items-center gap-2">
+        {/* Away team prob */}
+        <div className="text-center flex-shrink-0 w-16">
+          <div
+            className={`text-xl font-bold ${awayWinProb > homeWinProb ? "text-[var(--chalk-green)]" : "text-[var(--chalk-white)]"}`}
+          >
+            {Math.round(awayWinProb * 100)}%
+          </div>
+          <div className="text-[10px] text-[var(--chalk-muted)]">
+            {awayOdds?.moneyline ? formatMoneyline(awayOdds.moneyline) : ""}
+          </div>
+        </div>
+        {/* Probability bar */}
+        <div className="flex-1 h-4 bg-gray-700 rounded-full overflow-hidden flex">
+          <div
+            className={`h-full ${awayWinProb > homeWinProb ? "bg-[var(--chalk-green)]" : "bg-blue-500"}`}
+            style={{ width: `${awayWinProb * 100}%` }}
+          />
+          <div
+            className={`h-full ${homeWinProb > awayWinProb ? "bg-[var(--chalk-green)]" : "bg-red-500"}`}
+            style={{ width: `${homeWinProb * 100}%` }}
+          />
+        </div>
+        {/* Home team prob */}
+        <div className="text-center flex-shrink-0 w-16">
+          <div
+            className={`text-xl font-bold ${homeWinProb > awayWinProb ? "text-[var(--chalk-green)]" : "text-[var(--chalk-white)]"}`}
+          >
+            {Math.round(homeWinProb * 100)}%
+          </div>
+          <div className="text-[10px] text-[var(--chalk-muted)]">
+            {homeOdds?.moneyline ? formatMoneyline(homeOdds.moneyline) : ""}
+          </div>
+        </div>
+      </div>
+      <div className="flex justify-between text-xs text-[var(--chalk-muted)] mt-2">
+        <span>{awayTeam}</span>
+        <span>{homeTeam}</span>
+      </div>
+    </div>
+  );
+}
+
+// Prop type labels
+const PROP_LABELS: Record<string, string> = {
+  PASS_YARDS: "Pass Yds",
+  PASS_TDS: "Pass TDs",
+  RUSH_YARDS: "Rush Yds",
+  REC_YARDS: "Rec Yds",
+  RECEPTIONS: "Rec",
+  ANYTIME_TD: "TD Scorer",
+};
+
+// Player prop preview for pre-game
+interface PlayerProp {
+  propType: PropType;
+  line: number;
+  impliedOver: number;
+}
+
+function PlayerPropsPreview({ props }: { props: PlayerProp[] }) {
+  if (props.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {props.slice(0, 3).map((prop, idx) => {
+        const label = PROP_LABELS[prop.propType] || prop.propType;
+        const value =
+          prop.propType === "ANYTIME_TD"
+            ? `${Math.round(prop.impliedOver * 100)}%`
+            : `${prop.line}`;
+        return (
+          <span
+            key={`${prop.propType}-${idx}`}
+            className="text-[10px] px-1.5 py-0.5 bg-[var(--chalk-blue)]/20 text-[var(--chalk-blue)] rounded"
+            title={`${label}: O/U ${prop.line} (${Math.round(prop.impliedOver * 100)}% over)`}
+          >
+            {label}: {value}
+          </span>
+        );
+      })}
+      {props.length > 3 && (
+        <span className="text-[10px] px-1.5 py-0.5 bg-[rgba(255,255,255,0.1)] text-[var(--chalk-muted)] rounded">
+          +{props.length - 3} more
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default async function GamePage({ params }: { params: Promise<{ eventId: string }> }) {
   const { eventId } = await params;
 
@@ -374,6 +553,33 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
 
   // Get eliminated teams
   const eliminatedTeams = await getEliminatedTeams();
+
+  // Fetch weather data for this game
+  let weatherData: GameWeatherData | null = null;
+  try {
+    const gameTime = new Date(gameEvent.date);
+    weatherData = await fetchStadiumWeather(homeCompetitor.team.abbreviation, gameTime);
+  } catch (e) {
+    console.warn("Could not fetch weather:", e);
+  }
+
+  // Fetch team odds for both teams
+  const [awayTeamOdds, homeTeamOdds] = await Promise.all([
+    prisma.teamOdds.findFirst({
+      where: {
+        team: awayCompetitor.team.abbreviation.toUpperCase(),
+        year: CURRENT_SEASON_YEAR,
+        week: gameWeek,
+      },
+    }),
+    prisma.teamOdds.findFirst({
+      where: {
+        team: homeCompetitor.team.abbreviation.toUpperCase(),
+        year: CURRENT_SEASON_YEAR,
+        week: gameWeek,
+      },
+    }),
+  ]);
 
   // Get rostered players with their scores and substitutions
   const rosters = await prisma.roster.findMany({
@@ -620,6 +826,32 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
   const awayFantasyPts = awayPlayers.reduce((sum, p) => sum + p.points, 0);
   const homeFantasyPts = homePlayers.reduce((sum, p) => sum + p.points, 0);
 
+  // Fetch player props for this week
+  const playerPropsForWeek = await prisma.playerProp.findMany({
+    where: {
+      year: CURRENT_SEASON_YEAR,
+      week: gameWeek,
+    },
+    select: {
+      playerId: true,
+      propType: true,
+      line: true,
+      impliedOver: true,
+    },
+  });
+
+  // Group props by player
+  const propsByPlayerId = new Map<string, PlayerProp[]>();
+  for (const prop of playerPropsForWeek) {
+    const existing = propsByPlayerId.get(prop.playerId) || [];
+    existing.push({
+      propType: prop.propType,
+      line: prop.line,
+      impliedOver: prop.impliedOver,
+    });
+    propsByPlayerId.set(prop.playerId, existing);
+  }
+
   // For pre-game: Get all rostered players on these teams with their playoff totals
   interface PreGamePlayer {
     id: string;
@@ -630,6 +862,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
     totalPoints: number;
     gamesPlayed: number;
     espnId: string | null;
+    props: PlayerProp[];
   }
 
   const preGameAwayPlayers: PreGamePlayer[] = [];
@@ -641,6 +874,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
 
     const totalPoints = roster.player.scores.reduce((sum, s) => sum + s.points, 0);
     const gamesPlayed = roster.player.scores.length;
+    const playerProps = propsByPlayerId.get(roster.player.id) || [];
 
     const playerInfo: PreGamePlayer = {
       id: roster.player.id,
@@ -651,6 +885,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
       totalPoints,
       gamesPlayed,
       espnId: roster.player.espnId,
+      props: playerProps,
     };
 
     if (playerTeam === awayCompetitor.team.abbreviation.toUpperCase()) {
@@ -806,6 +1041,17 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
           )}
         </div>
       </div>
+
+      {/* Weather Section */}
+      <WeatherSection weather={weatherData} />
+
+      {/* Team Odds Section */}
+      <TeamOddsSection
+        awayTeam={awayCompetitor.team.abbreviation}
+        homeTeam={homeCompetitor.team.abbreviation}
+        awayOdds={awayTeamOdds}
+        homeOdds={homeTeamOdds}
+      />
 
       {/* Your Players Section */}
       {(awayPlayers.length > 0 || homePlayers.length > 0) && (
@@ -966,6 +1212,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
                         <div className="text-xs text-[var(--chalk-muted)]">
                           {player.position} - {player.ownerName}
                         </div>
+                        <PlayerPropsPreview props={player.props} />
                       </div>
                       <div className="text-right">
                         <div className="font-bold text-[var(--chalk-green)]">
@@ -1029,6 +1276,7 @@ export default async function GamePage({ params }: { params: Promise<{ eventId: 
                         <div className="text-xs text-[var(--chalk-muted)]">
                           {player.position} - {player.ownerName}
                         </div>
+                        <PlayerPropsPreview props={player.props} />
                       </div>
                       <div className="text-right">
                         <div className="font-bold text-[var(--chalk-green)]">

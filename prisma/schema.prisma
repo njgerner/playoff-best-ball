@@ -25,6 +25,7 @@ model Player {
   rosters     Roster[]
   scores      PlayerScore[]
   projections PlayerProjection[]
+  props       PlayerProp[]
   // Substitution relations - player can be original (injured) or substitute
   substitutionsAsOriginal   Substitution[] @relation("OriginalPlayer")
   substitutionsAsSubstitute Substitution[] @relation("SubstitutePlayer")
@@ -109,6 +110,15 @@ enum Position {
   DST
 }
 
+enum PropType {
+  PASS_YARDS
+  PASS_TDS
+  RUSH_YARDS
+  REC_YARDS
+  RECEPTIONS
+  ANYTIME_TD
+}
+
 enum RosterSlot {
   QB
   RB1
@@ -174,4 +184,61 @@ model Substitution {
 
   @@unique([rosterId, year]) // One active substitution per roster slot per year
   @@index([year])
+}
+
+// Player prop betting lines from sportsbooks
+model PlayerProp {
+  id          String   @id @default(cuid())
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  playerId    String
+  week        Int      // 1=WC, 2=DIV, 3=CONF, 5=SB
+  year        Int
+  propType    PropType
+  line        Float    // O/U line (e.g., 250.5 yards)
+  overOdds    Int      // American odds for over (-110)
+  underOdds   Int      // American odds for under (-110)
+  impliedOver Float    // Calculated probability for over (0.52)
+  bookmaker   String?  // draftkings, fanduel, betmgm
+  eventId     String?  // ESPN event ID for game correlation
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([playerId, week, year, propType, bookmaker])
+  @@index([year, week])
+  @@index([playerId])
+}
+
+// Weather data for NFL games
+model GameWeather {
+  id            String   @id @default(cuid())
+  eventId       String   @unique // ESPN event ID
+  week          Int
+  year          Int
+  temperature   Float?   // Fahrenheit
+  windSpeed     Float?   // MPH
+  windDirection String?  // N, NE, E, SE, S, SW, W, NW
+  precipitation Float?   // Probability 0-1
+  condition     String?  // Clear, Cloudy, Rain, Snow, etc.
+  isDome        Boolean  @default(false)
+  fetchedAt     DateTime @default(now())
+
+  @@index([year, week])
+}
+
+// Live tracking of prop progress during games
+model LivePropStatus {
+  id          String   @id @default(cuid())
+  playerId    String
+  eventId     String   // ESPN event ID
+  week        Int
+  year        Int
+  propType    PropType
+  line        Float    // Original prop line
+  currentStat Float    // Current in-game stat value
+  hitStatus   String   // UNDER, TRACKING, OVER
+  updatedAt   DateTime @updatedAt
+
+  @@unique([playerId, eventId, propType])
+  @@index([eventId])
+  @@index([year, week])
 }

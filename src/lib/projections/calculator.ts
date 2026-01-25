@@ -23,6 +23,9 @@ const POSITION_AVERAGES: Record<Position, number> = {
 // Minimum games for "high" confidence
 const HIGH_CONFIDENCE_GAMES = 2;
 
+// Recency weighting decay factor (20% decay per week)
+const RECENCY_DECAY_FACTOR = 0.8;
+
 /**
  * Calculate projected points for a player based on their playoff performance
  */
@@ -207,4 +210,82 @@ export function getCurrentProjectionWeek(): number {
 export function getRemainingWeeks(completedWeeks: number[]): number[] {
   const allWeeks = [1, 2, 3, 5];
   return allWeeks.filter((w) => !completedWeeks.includes(w));
+}
+
+/**
+ * Calculate recency-weighted average of historical scores
+ * More recent games are weighted more heavily using exponential decay
+ */
+export function calculateRecencyWeightedAverage(
+  scores: { week: number; points: number }[],
+  decayFactor: number = RECENCY_DECAY_FACTOR
+): number {
+  if (scores.length === 0) return 0;
+
+  // Sort by week descending (most recent first)
+  const sortedScores = [...scores].sort((a, b) => b.week - a.week);
+
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  sortedScores.forEach((score, index) => {
+    const weight = Math.pow(decayFactor, index);
+    weightedSum += score.points * weight;
+    totalWeight += weight;
+  });
+
+  return totalWeight > 0 ? roundToTwoDecimals(weightedSum / totalWeight) : 0;
+}
+
+/**
+ * Enhanced projection calculation using recency weighting
+ */
+export function calculateProjectionWithRecency(
+  player: PlayerWithScores,
+  useRecencyWeighting: boolean = true
+): ProjectionResult & { recencyWeighted: boolean } {
+  const validScores = player.scores.filter((s) => s.points > 0);
+  const gamesPlayed = validScores.length;
+
+  // No games played - use position average
+  if (gamesPlayed === 0) {
+    return {
+      projectedPoints: POSITION_AVERAGES[player.position],
+      confidence: "low",
+      basis: "position_avg",
+      gamesPlayed: 0,
+      recencyWeighted: false,
+    };
+  }
+
+  // Calculate average points - with or without recency weighting
+  let avgPoints: number;
+  if (useRecencyWeighting && gamesPlayed > 1) {
+    avgPoints = calculateRecencyWeightedAverage(validScores);
+  } else {
+    const totalPoints = validScores.reduce((sum, s) => sum + s.points, 0);
+    avgPoints = totalPoints / gamesPlayed;
+  }
+
+  // Determine confidence based on sample size
+  let confidence: "high" | "medium" | "low";
+  if (gamesPlayed >= HIGH_CONFIDENCE_GAMES) {
+    confidence = "high";
+  } else if (gamesPlayed === 1) {
+    confidence = "medium";
+  } else {
+    confidence = "low";
+  }
+
+  // Try to project individual stats if breakdown available
+  const breakdown = projectStatsBreakdown(player, validScores);
+
+  return {
+    projectedPoints: roundToTwoDecimals(avgPoints),
+    confidence,
+    basis: "playoff_avg",
+    gamesPlayed,
+    breakdown,
+    recencyWeighted: useRecencyWeighting && gamesPlayed > 1,
+  };
 }
