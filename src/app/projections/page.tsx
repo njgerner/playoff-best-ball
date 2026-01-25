@@ -478,7 +478,7 @@ function PlayoffsView({
           {/* Mobile card view */}
           <div className="md:hidden space-y-3">
             {data.projections.map((owner, index) => {
-              const totalEV = owner.actualPoints + owner.totalRemainingEV;
+              const totalProjected = owner.actualPoints + owner.totalProjectedPoints;
               return (
                 <div
                   key={owner.ownerId}
@@ -501,10 +501,9 @@ function PlayoffsView({
                         {expandedOwner === owner.ownerId ? "▼" : "▶"}
                       </span>
                     </div>
-                    <EVValue
-                      value={totalEV}
-                      className="text-xl font-bold text-[var(--chalk-green)]"
-                    />
+                    <div className="text-xl font-bold text-[var(--chalk-green)]">
+                      {totalProjected.toFixed(1)}
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-sm">
                     <div>
@@ -514,12 +513,10 @@ function PlayoffsView({
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs text-[var(--chalk-muted)]">+EV</div>
-                      <EVValue
-                        value={owner.totalRemainingEV}
-                        prefix="+"
-                        className="text-[var(--chalk-blue)]"
-                      />
+                      <div className="text-xs text-[var(--chalk-muted)]">+Proj</div>
+                      <div className="text-[var(--chalk-blue)]">
+                        +{owner.totalProjectedPoints.toFixed(1)}
+                      </div>
                     </div>
                     <div>
                       <div className="text-xs text-[var(--chalk-muted)]">Active</div>
@@ -549,20 +546,18 @@ function PlayoffsView({
                     </Tooltip>
                   </th>
                   <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">
-                    <span className="flex items-center justify-end gap-1">
-                      Remaining EV
-                      <button onClick={onEVClick} className="hover:text-[var(--chalk-blue)]">
-                        <InfoIcon className="w-3 h-3" />
-                      </button>
-                    </span>
+                    <Tooltip content="Projected points for remaining playoff games">
+                      <span className="flex items-center justify-end gap-1 cursor-help">
+                        Remaining <InfoIcon className="w-3 h-3" />
+                      </span>
+                    </Tooltip>
                   </th>
                   <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">
-                    <span className="flex items-center justify-end gap-1">
-                      Total EV
-                      <button onClick={onEVClick} className="hover:text-[var(--chalk-blue)]">
-                        <InfoIcon className="w-3 h-3" />
-                      </button>
-                    </span>
+                    <Tooltip content="Actual points + Projected remaining points">
+                      <span className="flex items-center justify-end gap-1 cursor-help">
+                        Total Proj <InfoIcon className="w-3 h-3" />
+                      </span>
+                    </Tooltip>
                   </th>
                   <th className="text-center py-2 px-2 text-[var(--chalk-muted)]">
                     <Tooltip content="Active players still in playoffs / Eliminated players">
@@ -575,7 +570,7 @@ function PlayoffsView({
               </thead>
               <tbody>
                 {data.projections.map((owner, index) => {
-                  const totalEV = owner.actualPoints + owner.totalRemainingEV;
+                  const totalProjected = owner.actualPoints + owner.totalProjectedPoints;
                   return (
                     <tr
                       key={owner.ownerId}
@@ -598,18 +593,11 @@ function PlayoffsView({
                       <td className="py-3 px-2 text-right text-[var(--chalk-text)]">
                         {owner.actualPoints.toFixed(1)}
                       </td>
-                      <td className="py-3 px-2 text-right">
-                        <EVValue
-                          value={owner.totalRemainingEV}
-                          prefix="+"
-                          className="text-[var(--chalk-blue)]"
-                        />
+                      <td className="py-3 px-2 text-right text-[var(--chalk-blue)]">
+                        +{owner.totalProjectedPoints.toFixed(1)}
                       </td>
-                      <td className="py-3 px-2 text-right">
-                        <EVValue
-                          value={totalEV}
-                          className="font-bold text-[var(--chalk-green)] text-lg"
-                        />
+                      <td className="py-3 px-2 text-right font-bold text-[var(--chalk-green)] text-lg">
+                        {totalProjected.toFixed(1)}
                       </td>
                       <td className="py-3 px-2 text-center">
                         <span className="text-[var(--chalk-green)]">{owner.activePlayers}</span>
@@ -659,7 +647,7 @@ function OwnerPlayoffCard({
   onPlayerClick?: (playerId: string) => void;
   onEVClick?: () => void;
 }) {
-  const totalEV = owner.actualPoints + owner.totalRemainingEV;
+  const totalProjected = owner.actualPoints + owner.totalProjectedPoints;
   return (
     <Card>
       <CardHeader className="pb-2 px-3 sm:px-6">
@@ -671,17 +659,12 @@ function OwnerPlayoffCard({
             </h3>
           </div>
           <div className="text-right flex-shrink-0">
-            <Tooltip content="Actual + Remaining EV = Total projected points">
+            <Tooltip content="Actual points + Projected remaining points">
               <span className="text-xl sm:text-2xl font-bold text-[var(--chalk-green)] cursor-help">
-                {totalEV.toFixed(1)}
+                {totalProjected.toFixed(1)}
               </span>
             </Tooltip>
-            <div className="text-[10px] sm:text-xs text-[var(--chalk-muted)] flex items-center justify-end gap-1">
-              Total EV
-              <button className="hover:text-[var(--chalk-blue)]">
-                <InfoIcon className="w-3 h-3" />
-              </button>
-            </div>
+            <div className="text-[10px] sm:text-xs text-[var(--chalk-muted)]">Total Proj</div>
           </div>
         </div>
         {/* Stats row - stacked on mobile */}
@@ -690,10 +673,12 @@ function OwnerPlayoffCard({
             Actual:{" "}
             <span className="text-[var(--chalk-text)]">{owner.actualPoints.toFixed(1)}</span>
           </span>
-          <Tooltip content="Sum of EV for remaining playoff weeks">
+          <Tooltip content="Projected points for remaining playoff games">
             <span className="cursor-help">
-              +EV:{" "}
-              <span className="text-[var(--chalk-blue)]">{owner.totalRemainingEV.toFixed(1)}</span>
+              +Proj:{" "}
+              <span className="text-[var(--chalk-blue)]">
+                {owner.totalProjectedPoints.toFixed(1)}
+              </span>
             </span>
           </Tooltip>
           <span>
@@ -707,65 +692,69 @@ function OwnerPlayoffCard({
       <CardContent className="px-3 sm:px-6">
         {/* Player list */}
         <div className="space-y-0.5">
-          {owner.players.slice(0, 9).map((player) => (
-            <div
-              key={player.id}
-              className={`flex items-center justify-between py-1.5 px-2 rounded hover:bg-[var(--chalk-surface)] cursor-pointer ${
-                player.totalRemainingEV === 0 ? "opacity-50" : ""
-              }`}
-              onClick={() => {
-                if (player.breakdown && onPlayerClick) {
-                  onPlayerClick(player.id);
-                }
-              }}
-            >
-              {/* Left side: position, name, team */}
-              <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                <span className="w-7 text-[10px] sm:text-xs font-medium text-[var(--chalk-muted)] flex-shrink-0">
-                  {player.slot}
-                </span>
-                <Link
-                  href={`/player/${player.id}`}
-                  onClick={(e) => e.stopPropagation()}
-                  className="text-xs sm:text-sm text-[var(--chalk-text)] hover:text-[var(--chalk-blue)] transition-colors truncate"
-                >
-                  {player.name}
-                </Link>
-                {player.team && (
-                  <span className="text-[10px] text-[var(--chalk-muted)] flex-shrink-0 hidden sm:inline">
-                    {player.team}
+          {owner.players.slice(0, 9).map((player) => {
+            const totalRemaining = player.weeklyBreakdown.reduce(
+              (sum, week) => sum + week.projectedPoints,
+              0
+            );
+            return (
+              <div
+                key={player.id}
+                className={`flex items-center justify-between py-1.5 px-2 rounded hover:bg-[var(--chalk-surface)] cursor-pointer ${
+                  totalRemaining === 0 ? "opacity-50" : ""
+                }`}
+                onClick={() => {
+                  if (player.breakdown && onPlayerClick) {
+                    onPlayerClick(player.id);
+                  }
+                }}
+              >
+                {/* Left side: position, name, team */}
+                <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                  <span className="w-7 text-[10px] sm:text-xs font-medium text-[var(--chalk-muted)] flex-shrink-0">
+                    {player.slot}
                   </span>
-                )}
-                {/* Projection source and confidence badge */}
-                {player.source && player.confidence && (
-                  <CompactProjectionBadge
-                    source={player.source}
-                    confidence={player.confidence}
-                    propCount={player.propCount}
-                  />
-                )}
-              </div>
-              {/* Right side: actual points and remaining EV */}
-              <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm flex-shrink-0">
-                <span className="text-[var(--chalk-text)] w-8 sm:w-10 text-right">
-                  {player.actualPoints.toFixed(1)}
-                </span>
-                <Tooltip
-                  content={`Projected: ${player.avgPointsPerGame.toFixed(1)}/game × Win probability`}
-                >
-                  <span className="text-[var(--chalk-green)] w-10 sm:w-12 text-right font-medium cursor-help">
-                    +{player.totalRemainingEV.toFixed(1)}
+                  <Link
+                    href={`/player/${player.id}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-xs sm:text-sm text-[var(--chalk-text)] hover:text-[var(--chalk-blue)] transition-colors truncate"
+                  >
+                    {player.name}
+                  </Link>
+                  {player.team && (
+                    <span className="text-[10px] text-[var(--chalk-muted)] flex-shrink-0 hidden sm:inline">
+                      {player.team}
+                    </span>
+                  )}
+                  {/* Projection source and confidence badge */}
+                  {player.source && player.confidence && (
+                    <CompactProjectionBadge
+                      source={player.source}
+                      confidence={player.confidence}
+                      propCount={player.propCount}
+                    />
+                  )}
+                </div>
+                {/* Right side: actual points and remaining projected */}
+                <div className="flex items-center gap-2 sm:gap-3 text-xs sm:text-sm flex-shrink-0">
+                  <span className="text-[var(--chalk-text)] w-8 sm:w-10 text-right">
+                    {player.actualPoints.toFixed(1)}
                   </span>
-                </Tooltip>
-                {player.breakdown && <span className="text-[var(--chalk-muted)] text-xs">›</span>}
+                  <Tooltip content={`Projected: ${player.avgPointsPerGame.toFixed(1)}/game`}>
+                    <span className="text-[var(--chalk-green)] w-10 sm:w-12 text-right font-medium cursor-help">
+                      +{totalRemaining.toFixed(1)}
+                    </span>
+                  </Tooltip>
+                  {player.breakdown && <span className="text-[var(--chalk-muted)] text-xs">›</span>}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
         {/* Legend */}
         <div className="flex justify-between mt-3 pt-2 border-t border-[var(--chalk-border)]/50 text-[10px] sm:text-xs text-[var(--chalk-muted)]">
           <span>Actual pts</span>
-          <span className="text-[var(--chalk-green)]">+Remaining EV</span>
+          <span className="text-[var(--chalk-green)]">+Remaining Proj</span>
         </div>
       </CardContent>
     </Card>
@@ -801,73 +790,72 @@ function OwnerPlayoffDetails({
                     {weekNames[w]}
                   </th>
                 ))}
-                <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">Total EV</th>
+                <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">Total Proj</th>
               </tr>
             </thead>
             <tbody>
-              {owner.players.map((player) => (
-                <tr
-                  key={player.id}
-                  className={`border-b border-[var(--chalk-border)]/50 ${
-                    player.totalRemainingEV === 0 ? "opacity-50" : ""
-                  }`}
-                >
-                  <td className="py-2 px-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-[var(--chalk-muted)]">{player.slot}</span>
-                      <Link
-                        href={`/player/${player.id}`}
-                        className="text-[var(--chalk-text)] hover:text-[var(--chalk-blue)]"
-                      >
-                        {player.name}
-                      </Link>
-                      {player.team && (
-                        <span className="text-xs text-[var(--chalk-muted)]">{player.team}</span>
-                      )}
-                      {/* Projection source and confidence badge */}
-                      {player.source && player.confidence && (
-                        <CompactProjectionBadge
-                          source={player.source}
-                          confidence={player.confidence}
-                          propCount={player.propCount}
-                        />
-                      )}
-                    </div>
-                  </td>
-                  <td className="py-2 px-2 text-right text-[var(--chalk-text)]">
-                    {player.actualPoints.toFixed(1)}
-                  </td>
-                  <td className="py-2 px-2 text-right text-[var(--chalk-muted)]">
-                    {player.avgPointsPerGame.toFixed(1)}
-                  </td>
-                  {remainingWeeks.map((w) => {
-                    const weekData = player.weeklyBreakdown.find((wb) => wb.week === w);
-                    return (
-                      <td key={w} className="py-2 px-2 text-right">
-                        {weekData ? (
-                          <div>
-                            <EVValue
-                              value={weekData.expectedValue}
-                              className="text-[var(--chalk-green)]"
-                            />
-                            <div className="text-xs text-[var(--chalk-muted)]">
-                              {(weekData.advanceProb * 100).toFixed(0)}%
-                            </div>
-                          </div>
-                        ) : (
-                          <span className="text-[var(--chalk-muted)]">-</span>
+              {owner.players.map((player) => {
+                const totalRemaining = player.weeklyBreakdown.reduce(
+                  (sum, week) => sum + week.projectedPoints,
+                  0
+                );
+                return (
+                  <tr
+                    key={player.id}
+                    className={`border-b border-[var(--chalk-border)]/50 ${
+                      totalRemaining === 0 ? "opacity-50" : ""
+                    }`}
+                  >
+                    <td className="py-2 px-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-[var(--chalk-muted)]">{player.slot}</span>
+                        <Link
+                          href={`/player/${player.id}`}
+                          className="text-[var(--chalk-text)] hover:text-[var(--chalk-blue)]"
+                        >
+                          {player.name}
+                        </Link>
+                        {player.team && (
+                          <span className="text-xs text-[var(--chalk-muted)]">{player.team}</span>
                         )}
-                      </td>
-                    );
-                  })}
-                  <td className="py-2 px-2 text-right">
-                    <EVValue
-                      value={player.totalRemainingEV}
-                      className="font-bold text-[var(--chalk-green)]"
-                    />
-                  </td>
-                </tr>
-              ))}
+                        {/* Projection source and confidence badge */}
+                        {player.source && player.confidence && (
+                          <CompactProjectionBadge
+                            source={player.source}
+                            confidence={player.confidence}
+                            propCount={player.propCount}
+                          />
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2 px-2 text-right text-[var(--chalk-text)]">
+                      {player.actualPoints.toFixed(1)}
+                    </td>
+                    <td className="py-2 px-2 text-right text-[var(--chalk-muted)]">
+                      {player.avgPointsPerGame.toFixed(1)}
+                    </td>
+                    {remainingWeeks.map((w) => {
+                      const weekData = player.weeklyBreakdown.find((wb) => wb.week === w);
+                      return (
+                        <td key={w} className="py-2 px-2 text-right">
+                          {weekData ? (
+                            <div className="text-[var(--chalk-green)]">
+                              {weekData.projectedPoints.toFixed(1)}
+                            </div>
+                          ) : (
+                            <span className="text-[var(--chalk-muted)]">-</span>
+                          )}
+                        </td>
+                      );
+                    })}
+                    <td className="py-2 px-2 text-right font-bold text-[var(--chalk-green)]">
+                      {player.weeklyBreakdown
+                        .reduce((sum, week) => sum + week.projectedPoints, 0)
+                        .toFixed(1)}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -958,45 +946,45 @@ function SingleWeekView({
         <CardContent>
           {/* Mobile card view */}
           <div className="md:hidden space-y-3">
-            {data.projections.map((owner, index) => (
-              <div
-                key={owner.ownerId}
-                className={`p-3 rounded-lg ${
-                  index === 0
-                    ? "bg-yellow-900/30 border border-yellow-500/30"
-                    : "bg-[rgba(0,0,0,0.2)] border border-[var(--chalk-muted)]/20"
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <RankBadge rank={index + 1} />
-                    <span className="font-semibold text-[var(--chalk-text)]">
-                      {owner.ownerName}
-                    </span>
-                  </div>
-                  <EVValue
-                    value={owner.totalExpectedValue}
-                    className="text-xl font-bold text-[var(--chalk-green)]"
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-sm">
-                  <div>
-                    <div className="text-xs text-[var(--chalk-muted)]">Actual</div>
-                    <div className="text-[var(--chalk-text)]">{owner.actualPoints.toFixed(1)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-[var(--chalk-muted)]">Projected</div>
-                    <div className="text-[var(--chalk-blue)]">
-                      {owner.projectedPoints.toFixed(1)}
+            {data.projections.map((owner, index) => {
+              const totalProjected = owner.actualPoints + owner.projectedPoints;
+              return (
+                <div
+                  key={owner.ownerId}
+                  className={`p-3 rounded-lg ${
+                    index === 0
+                      ? "bg-yellow-900/30 border border-yellow-500/30"
+                      : "bg-[rgba(0,0,0,0.2)] border border-[var(--chalk-muted)]/20"
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <RankBadge rank={index + 1} />
+                      <span className="font-semibold text-[var(--chalk-text)]">
+                        {owner.ownerName}
+                      </span>
+                    </div>
+                    <div className="text-xl font-bold text-[var(--chalk-green)]">
+                      {totalProjected.toFixed(1)}
                     </div>
                   </div>
-                  <div>
-                    <div className="text-xs text-[var(--chalk-muted)]">EV</div>
-                    <EVValue value={owner.expectedValue} className="text-[var(--chalk-muted)]" />
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    <div>
+                      <div className="text-xs text-[var(--chalk-muted)]">Actual</div>
+                      <div className="text-[var(--chalk-text)]">
+                        {owner.actualPoints.toFixed(1)}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-[var(--chalk-muted)]">Projected</div>
+                      <div className="text-[var(--chalk-blue)]">
+                        {owner.projectedPoints.toFixed(1)}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {/* Desktop table view */}
           <div className="hidden md:block overflow-x-auto">
@@ -1020,52 +1008,40 @@ function SingleWeekView({
                     </Tooltip>
                   </th>
                   <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">
-                    <span className="flex items-center justify-end gap-1">
-                      EV
-                      <button onClick={onEVClick} className="hover:text-[var(--chalk-blue)]">
-                        <InfoIcon className="w-3 h-3" />
-                      </button>
-                    </span>
-                  </th>
-                  <th className="text-right py-2 px-2 text-[var(--chalk-muted)]">
-                    <span className="flex items-center justify-end gap-1">
-                      Total EV
-                      <button onClick={onEVClick} className="hover:text-[var(--chalk-blue)]">
-                        <InfoIcon className="w-3 h-3" />
-                      </button>
-                    </span>
+                    <Tooltip content="Actual points + Projected points for this week">
+                      <span className="flex items-center justify-end gap-1 cursor-help">
+                        Total Proj <InfoIcon className="w-3 h-3" />
+                      </span>
+                    </Tooltip>
                   </th>
                 </tr>
               </thead>
               <tbody>
-                {data.projections.map((owner, index) => (
-                  <tr
-                    key={owner.ownerId}
-                    className="border-b border-[var(--chalk-border)]/50 hover:bg-[var(--chalk-surface)]"
-                  >
-                    <td className="py-2 px-2">
-                      <RankBadge rank={index + 1} />
-                    </td>
-                    <td className="py-2 px-2 font-semibold text-[var(--chalk-text)]">
-                      {owner.ownerName}
-                    </td>
-                    <td className="py-2 px-2 text-right text-[var(--chalk-text)]">
-                      {owner.actualPoints.toFixed(1)}
-                    </td>
-                    <td className="py-2 px-2 text-right text-[var(--chalk-blue)]">
-                      {owner.projectedPoints.toFixed(1)}
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      <EVValue value={owner.expectedValue} className="text-[var(--chalk-muted)]" />
-                    </td>
-                    <td className="py-2 px-2 text-right">
-                      <EVValue
-                        value={owner.totalExpectedValue}
-                        className="font-bold text-[var(--chalk-green)]"
-                      />
-                    </td>
-                  </tr>
-                ))}
+                {data.projections.map((owner, index) => {
+                  const totalProjected = owner.actualPoints + owner.projectedPoints;
+                  return (
+                    <tr
+                      key={owner.ownerId}
+                      className="border-b border-[var(--chalk-border)]/50 hover:bg-[var(--chalk-surface)]"
+                    >
+                      <td className="py-2 px-2">
+                        <RankBadge rank={index + 1} />
+                      </td>
+                      <td className="py-2 px-2 font-semibold text-[var(--chalk-text)]">
+                        {owner.ownerName}
+                      </td>
+                      <td className="py-2 px-2 text-right text-[var(--chalk-text)]">
+                        {owner.actualPoints.toFixed(1)}
+                      </td>
+                      <td className="py-2 px-2 text-right text-[var(--chalk-blue)]">
+                        {owner.projectedPoints.toFixed(1)}
+                      </td>
+                      <td className="py-2 px-2 text-right font-bold text-[var(--chalk-green)]">
+                        {totalProjected.toFixed(1)}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -1073,115 +1049,117 @@ function SingleWeekView({
       </Card>
       {/* Owner Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {data.projections.map((owner, rank) => (
-          <Card key={owner.ownerId}>
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <RankBadge rank={rank + 1} />
-                  <h3 className="text-lg font-bold text-[var(--chalk-yellow)]">
-                    {owner.ownerName}
-                  </h3>
-                </div>
-                <div className="text-right">
-                  <EVValue
-                    value={owner.totalExpectedValue}
-                    className="text-2xl font-bold text-[var(--chalk-green)]"
-                  />
-                  <div className="text-xs text-[var(--chalk-muted)]">Total EV</div>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-1">
-                {owner.players.map((player) => (
-                  <div
-                    key={player.id}
-                    className={`flex items-center justify-between py-1 px-2 rounded hover:bg-[var(--chalk-surface)] ${
-                      player.isEliminated || player.isInjured ? "opacity-60" : ""
-                    }`}
-                  >
-                    <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
-                      <span
-                        className={`w-8 text-xs font-medium text-[var(--chalk-muted)] ${player.isInjured ? "opacity-50" : ""}`}
-                      >
-                        {player.slot}
-                      </span>
-                      <Link
-                        href={`/player/${player.id}`}
-                        className={`text-sm transition-colors truncate ${
-                          player.isInjured
-                            ? "text-[var(--chalk-muted)] line-through"
-                            : "text-[var(--chalk-text)] hover:text-[var(--chalk-blue)]"
-                        }`}
-                      >
-                        {player.name}
-                      </Link>
-                      {player.isInjured && (
-                        <span
-                          className="text-[8px] text-orange-400 bg-orange-900/30 px-1 py-0.5 rounded"
-                          title={player.substitution?.reason || "Injured - out for playoffs"}
-                        >
-                          INJ
-                        </span>
-                      )}
-                      {player.isEliminated && !player.isInjured && (
-                        <span className="text-[8px] text-red-400 px-1 py-0.5 bg-red-900/30 rounded">
-                          OUT
-                        </span>
-                      )}
-                      {player.isByeWeek && !player.isInjured && (
-                        <span className="text-[8px] text-purple-400 px-1 py-0.5 bg-purple-900/30 rounded">
-                          BYE
-                        </span>
-                      )}
-                      {/* Show substitute player */}
-                      {player.isInjured && player.substitution && (
-                        <span className="flex items-center gap-1 text-xs">
-                          <span className="text-[var(--chalk-muted)]">/</span>
-                          <Link
-                            href={`/player/${player.substitution.substitutePlayer.id}`}
-                            className="text-[var(--chalk-blue)] hover:text-[var(--chalk-pink)] hover:underline"
-                          >
-                            {player.substitution.substitutePlayer.name}
-                          </Link>
-                          <span className="text-[8px] text-blue-400 bg-blue-900/30 px-1 py-0.5 rounded">
-                            SUB
-                          </span>
-                        </span>
-                      )}
-                      {/* Projection source and confidence badge */}
-                      {player.source && player.confidence && (
-                        <CompactProjectionBadge
-                          source={player.source}
-                          confidence={player.confidence}
-                          propCount={player.propCount}
-                        />
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-sm flex-shrink-0">
-                      <span className="text-[var(--chalk-text)] w-12 text-right">
-                        {player.actualPoints.toFixed(1)}
-                      </span>
-                      {player.isByeWeek ? (
-                        <span className="w-12 text-right font-medium text-purple-400">BYE</span>
-                      ) : player.expectedValue !== null ? (
-                        <EVValue
-                          value={player.expectedValue}
-                          className="w-12 text-right font-medium text-[var(--chalk-green)]"
-                        />
-                      ) : (
-                        <span className="w-12 text-right font-medium text-[var(--chalk-muted)]">
-                          -
-                        </span>
-                      )}
-                    </div>
+        {data.projections.map((owner, rank) => {
+          const totalProjected = owner.actualPoints + owner.projectedPoints;
+          return (
+            <Card key={owner.ownerId}>
+              <CardHeader className="pb-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <RankBadge rank={rank + 1} />
+                    <h3 className="text-lg font-bold text-[var(--chalk-yellow)]">
+                      {owner.ownerName}
+                    </h3>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+                  <div className="text-right">
+                    <div className="text-2xl font-bold text-[var(--chalk-green)]">
+                      {totalProjected.toFixed(1)}
+                    </div>
+                    <div className="text-xs text-[var(--chalk-muted)]">Total Proj</div>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  {owner.players.map((player) => (
+                    <div
+                      key={player.id}
+                      className={`flex items-center justify-between py-1 px-2 rounded hover:bg-[var(--chalk-surface)] ${
+                        player.isEliminated || player.isInjured ? "opacity-60" : ""
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                        <span
+                          className={`w-8 text-xs font-medium text-[var(--chalk-muted)] ${player.isInjured ? "opacity-50" : ""}`}
+                        >
+                          {player.slot}
+                        </span>
+                        <Link
+                          href={`/player/${player.id}`}
+                          className={`text-sm transition-colors truncate ${
+                            player.isInjured
+                              ? "text-[var(--chalk-muted)] line-through"
+                              : "text-[var(--chalk-text)] hover:text-[var(--chalk-blue)]"
+                          }`}
+                        >
+                          {player.name}
+                        </Link>
+                        {player.isInjured && (
+                          <span
+                            className="text-[8px] text-orange-400 bg-orange-900/30 px-1 py-0.5 rounded"
+                            title={player.substitution?.reason || "Injured - out for playoffs"}
+                          >
+                            INJ
+                          </span>
+                        )}
+                        {player.isEliminated && !player.isInjured && (
+                          <span className="text-[8px] text-red-400 px-1 py-0.5 bg-red-900/30 rounded">
+                            OUT
+                          </span>
+                        )}
+                        {player.isByeWeek && !player.isInjured && (
+                          <span className="text-[8px] text-purple-400 px-1 py-0.5 bg-purple-900/30 rounded">
+                            BYE
+                          </span>
+                        )}
+                        {/* Show substitute player */}
+                        {player.isInjured && player.substitution && (
+                          <span className="flex items-center gap-1 text-xs">
+                            <span className="text-[var(--chalk-muted)]">/</span>
+                            <Link
+                              href={`/player/${player.substitution.substitutePlayer.id}`}
+                              className="text-[var(--chalk-blue)] hover:text-[var(--chalk-pink)] hover:underline"
+                            >
+                              {player.substitution.substitutePlayer.name}
+                            </Link>
+                            <span className="text-[8px] text-blue-400 bg-blue-900/30 px-1 py-0.5 rounded">
+                              SUB
+                            </span>
+                          </span>
+                        )}
+                        {/* Projection source and confidence badge */}
+                        {player.source && player.confidence && (
+                          <CompactProjectionBadge
+                            source={player.source}
+                            confidence={player.confidence}
+                            propCount={player.propCount}
+                          />
+                        )}
+                      </div>
+                      <div className="flex items-center gap-3 text-sm flex-shrink-0">
+                        <span className="text-[var(--chalk-text)] w-12 text-right">
+                          {player.actualPoints.toFixed(1)}
+                        </span>
+                        {player.isByeWeek ? (
+                          <span className="w-12 text-right font-medium text-purple-400">BYE</span>
+                        ) : player.projectedPoints !== null &&
+                          player.projectedPoints !== undefined ? (
+                          <span className="w-12 text-right font-medium text-[var(--chalk-green)]">
+                            {player.projectedPoints.toFixed(1)}
+                          </span>
+                        ) : (
+                          <span className="w-12 text-right font-medium text-[var(--chalk-muted)]">
+                            -
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
     </>
   );

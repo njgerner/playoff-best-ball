@@ -98,9 +98,9 @@ function GameCard({ game, rosteredTeams }: { game: GameInfo; rosteredTeams?: Set
   const hasHome = rosteredTeams?.has(game.homeTeam.abbreviation.toUpperCase());
   const hasPlayers = hasAway || hasHome;
 
-  // Calculate win probability bar widths
-  const awayProb = game.awayWinProb ?? 50;
-  const homeProb = game.homeWinProb ?? 50;
+  // Calculate win probability bar widths (convert from 0-1 range to 0-100 percentage)
+  const awayProb = (game.awayWinProb ?? 0.5) * 100;
+  const homeProb = (game.homeWinProb ?? 0.5) * 100;
 
   return (
     <Link

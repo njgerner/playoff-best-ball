@@ -432,7 +432,7 @@ export function LiveScoreboard() {
             const pointChange =
               roster.previousTotal !== undefined ? roster.totalPoints - roster.previousTotal : null;
             const isUp = pointChange !== null && pointChange > 0;
-            const totalEV = roster.totalPoints + (roster.expectedValue || 0);
+            const totalProjected = roster.totalPoints + (roster.projectedPoints || 0);
 
             return (
               <div
@@ -451,9 +451,11 @@ export function LiveScoreboard() {
                   {roster.totalPoints.toFixed(1)}
                 </div>
                 {showProjections &&
-                  roster.expectedValue !== undefined &&
-                  roster.expectedValue > 0 && (
-                    <div className="text-xs text-[var(--chalk-blue)]">EV: {totalEV.toFixed(1)}</div>
+                  roster.projectedPoints !== undefined &&
+                  roster.projectedPoints > 0 && (
+                    <div className="text-xs text-[var(--chalk-blue)]">
+                      Proj: {totalProjected.toFixed(1)}
+                    </div>
                   )}
                 <div className="text-xs text-[var(--chalk-muted)]">
                   {roster.activePlayers}/9 active
@@ -478,7 +480,7 @@ export function LiveScoreboard() {
                 onChange={(e) => setShowProjections(e.target.checked)}
                 className="w-4 h-4 rounded"
               />
-              <span className="text-[var(--chalk-blue)]">EV</span>
+              <span className="text-[var(--chalk-blue)]">Proj</span>
             </label>
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
@@ -549,10 +551,10 @@ export function LiveScoreboard() {
                     : null;
                 const isUp = pointChange !== null && pointChange > 0.01;
                 const posColor = POSITION_COLORS[player.position] || "text-[var(--chalk-white)]";
-                const hasEV =
-                  player.expectedValue !== undefined &&
-                  player.expectedValue !== null &&
-                  player.expectedValue > 0;
+                const hasProjection =
+                  player.projectedPoints !== undefined &&
+                  player.projectedPoints !== null &&
+                  player.projectedPoints > 0;
                 const isInjured = player.hasSubstitution;
 
                 return (
@@ -613,9 +615,9 @@ export function LiveScoreboard() {
                           +{pointChange.toFixed(1)}
                         </span>
                       )}
-                      {showProjections && hasEV && (
+                      {showProjections && hasProjection && (
                         <span className="text-xs text-[var(--chalk-blue)] mr-1">
-                          +{player.expectedValue!.toFixed(1)}
+                          +{player.projectedPoints!.toFixed(1)}
                         </span>
                       )}
                       <span
