@@ -281,8 +281,8 @@ export default function ProjectionsPage() {
           </div>
           <p className="text-sm text-[var(--chalk-muted)] mt-1">
             {viewMode === "playoffs"
-              ? "Cumulative expected value for rest of playoffs"
-              : `Expected value for ${weekNames[selectedWeek]}`}
+              ? "Projected points for rest of playoffs"
+              : `Projected points for ${weekNames[selectedWeek]}`}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
