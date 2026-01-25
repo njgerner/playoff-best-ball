@@ -161,9 +161,9 @@ function BracketGameCard({
   const teamTextSize = size === "large" ? "text-sm" : "text-xs";
   const scoreTextSize = size === "large" ? "text-lg" : "text-sm";
 
-  // Win probabilities
-  const awayProb = game.awayWinProb ?? 50;
-  const homeProb = game.homeWinProb ?? 50;
+  // Win probabilities (convert from 0-1 range to 0-100 percentage)
+  const awayProb = (game.awayWinProb ?? 0.5) * 100;
+  const homeProb = (game.homeWinProb ?? 0.5) * 100;
 
   return (
     <Link
