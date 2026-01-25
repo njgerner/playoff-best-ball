@@ -301,3 +301,61 @@ export interface OwnerProjectionSummary {
   totalExpectedValue: number;
   players: PlayerProjectionData[];
 }
+
+/**
+ * Enhanced projection breakdown with full transparency
+ * Shows sources, adjustments, confidence factors, and ranges
+ */
+export interface EnhancedProjectionBreakdown {
+  // Final numbers
+  projectedPoints: number;
+  expectedValue: number | null;
+
+  // Source contributions
+  sources: {
+    propBased: number | null;
+    historicalAvg: number | null;
+    propWeight: number;
+    historicalWeight: number;
+  };
+
+  // Adjustments applied
+  adjustments: {
+    weather: {
+      applied: boolean;
+      impact: "high" | "medium" | "low" | "none";
+      multiplier: number;
+      conditions?: string;
+    };
+    recencyWeighting: boolean;
+  };
+
+  // Confidence factors
+  confidence: {
+    level: "high" | "medium" | "low";
+    score: number; // 0-100
+    factors: string[];
+  };
+
+  // Projection range
+  range: {
+    low: number;
+    median: number;
+    high: number;
+  };
+
+  // Props breakdown (if available)
+  props?: {
+    passYards?: { line: number; points: number };
+    rushYards?: { line: number; points: number };
+    recYards?: { line: number; points: number };
+    receptions?: { line: number; points: number };
+    anytimeTd?: { probability: number; points: number };
+  };
+
+  // Metadata
+  dataFreshness: {
+    propsUpdatedAt: string | null;
+    historicalGamesCount: number;
+  };
+}

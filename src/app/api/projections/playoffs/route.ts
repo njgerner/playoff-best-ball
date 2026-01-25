@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/db";
 import { CURRENT_SEASON_YEAR, BYE_TEAMS_2025 } from "@/lib/constants";
 import { getEliminatedTeams } from "@/lib/espn/client";
+import { Position, EnhancedProjectionBreakdown } from "@/types";
+import {
+  advancedBlendProjections,
+  aggregatePlayerProps,
+  PropProjection,
+} from "@/lib/props/calculator";
+import { fetchStadiumWeather, GameWeatherData } from "@/lib/weather/client";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +35,12 @@ interface PlayerPlayoffProjection {
   weeklyBreakdown: WeekProjection[];
   totalRemainingEV: number;
   champProb: number | null;
+  // Enhanced breakdown (when includeBreakdown=true)
+  breakdown?: EnhancedProjectionBreakdown;
+  // Source indicators
+  source?: "prop" | "historical" | "blended";
+  propCount?: number;
+  confidence?: "high" | "medium" | "low";
 }
 
 interface OwnerPlayoffProjection {
@@ -44,11 +57,19 @@ interface OwnerPlayoffProjection {
 /**
  * GET /api/projections/playoffs
  * Get cumulative rest-of-playoffs projections for all owners
+ *
+ * Query params:
+ * - year: Season year (default: current)
+ * - currentWeek: Override current week detection
+ * - includeBreakdown: Include full projection breakdown (default: false)
+ * - useEnhanced: Use prop-based projections when available (default: true)
  */
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const year = parseInt(url.searchParams.get("year") || String(CURRENT_SEASON_YEAR));
+    const includeBreakdown = url.searchParams.get("includeBreakdown") === "true";
+    const useEnhanced = url.searchParams.get("useEnhanced") !== "false"; // Default true
 
     // Get eliminated teams
     const eliminatedTeams = await getEliminatedTeams();
@@ -121,7 +142,7 @@ export async function GET(request: Request) {
     // Use the configured bye teams for the current season
     const byeTeams = new Set(BYE_TEAMS_2025);
 
-    // Get all owners with rosters, scores, and projections
+    // Get all owners with rosters, scores, projections, and props
     const owners = await prisma.owner.findMany({
       include: {
         rosters: {
@@ -136,12 +157,46 @@ export async function GET(request: Request) {
                 projections: {
                   where: { year },
                 },
+                props: useEnhanced
+                  ? {
+                      where: { year, week: currentWeek },
+                      orderBy: { updatedAt: "desc" },
+                    }
+                  : undefined,
               },
             },
           },
         },
       },
     });
+
+    // Fetch weather data for teams with games this week (if using enhanced projections)
+    const weatherCache = new Map<string, GameWeatherData | null>();
+    if (useEnhanced) {
+      // Get unique teams still in playoffs
+      const teamsInPlayoffs = new Set<string>();
+      for (const owner of owners) {
+        for (const roster of owner.rosters) {
+          const team = roster.player.team?.toUpperCase();
+          if (team && !eliminatedTeams.has(team) && !byeTeams.has(team)) {
+            teamsInPlayoffs.add(team);
+          }
+        }
+      }
+      // Fetch weather for each team (async parallel)
+      const weatherPromises = Array.from(teamsInPlayoffs).map(async (team) => {
+        try {
+          // Use a default game time (afternoon kickoff)
+          const gameDate = new Date();
+          gameDate.setHours(16, 30, 0, 0); // 4:30 PM
+          const weather = await fetchStadiumWeather(team, gameDate);
+          weatherCache.set(team, weather);
+        } catch {
+          weatherCache.set(team, null);
+        }
+      });
+      await Promise.all(weatherPromises);
+    }
 
     const weekNames: Record<number, string> = {
       1: "Wild Card",
@@ -168,11 +223,72 @@ export async function GET(request: Request) {
           activePlayers++;
         }
 
-        // Calculate actual points and average
+        // Calculate actual points
         const actualPoints = player.scores.reduce((sum, s) => sum + s.points, 0);
         const gamesPlayed = player.scores.filter((s) => s.points > 0).length;
-        const avgPointsPerGame =
-          gamesPlayed > 0 ? actualPoints / gamesPlayed : getPositionAverage(player.position);
+
+        // Get props for enhanced projection
+        const playerProps =
+          (player as { props?: { propType: string; line: number; updatedAt: Date }[] }).props || [];
+        const propData =
+          playerProps.length > 0
+            ? aggregatePlayerProps(
+                playerProps.map((p) => ({
+                  propType: p.propType as import("@prisma/client").PropType,
+                  line: p.line,
+                })),
+                player.position as Position
+              )
+            : { points: null, propCount: 0, projection: {} as PropProjection };
+
+        // Get weather for this player's team
+        const weather = weatherCache.get(playerTeam) ?? null;
+
+        // Get team's win probability for current week
+        const teamOddsForWeek = oddsMap.get(playerTeam);
+        const weekWinProb = teamOddsForWeek?.get(currentWeek) ?? null;
+
+        // Use enhanced projection if enabled and we have data
+        let avgPointsPerGame: number;
+        let projectionBreakdown: EnhancedProjectionBreakdown | undefined;
+        let projectionSource: "prop" | "historical" | "blended" | undefined;
+        let projectionConfidence: "high" | "medium" | "low" | undefined;
+
+        if (useEnhanced && (propData.propCount > 0 || gamesPlayed > 0)) {
+          const enhancedResult = advancedBlendProjections(
+            {
+              points: propData.points,
+              propCount: propData.propCount,
+              props: propData.projection,
+              updatedAt: playerProps[0]?.updatedAt,
+            },
+            {
+              scores: player.scores.map((s) => ({ week: s.week, points: s.points })),
+            },
+            player.position as Position,
+            weather,
+            weekWinProb
+          );
+
+          avgPointsPerGame = enhancedResult.projectedPoints;
+          projectionSource =
+            enhancedResult.sources.propWeight > 0.5
+              ? enhancedResult.sources.historicalWeight > 0
+                ? "blended"
+                : "prop"
+              : "historical";
+          projectionConfidence = enhancedResult.confidence.level;
+
+          if (includeBreakdown) {
+            projectionBreakdown = enhancedResult;
+          }
+        } else {
+          // Fallback to simple average
+          avgPointsPerGame =
+            gamesPlayed > 0 ? actualPoints / gamesPlayed : getPositionAverage(player.position);
+          projectionSource = gamesPlayed > 0 ? "historical" : undefined;
+          projectionConfidence = gamesPlayed >= 2 ? "medium" : "low";
+        }
 
         // Calculate week-by-week EV for remaining weeks
         const weeklyBreakdown: WeekProjection[] = [];
@@ -240,6 +356,11 @@ export async function GET(request: Request) {
           weeklyBreakdown,
           totalRemainingEV: Math.round(totalRemainingEV * 100) / 100,
           champProb: champProb ? Math.round(champProb * 1000) / 1000 : null,
+          // Enhanced projection data
+          breakdown: projectionBreakdown,
+          source: projectionSource,
+          propCount: propData.propCount,
+          confidence: projectionConfidence,
         };
       });
 
@@ -265,6 +386,18 @@ export async function GET(request: Request) {
       (a, b) => b.actualPoints + b.totalRemainingEV - (a.actualPoints + a.totalRemainingEV)
     );
 
+    // Calculate prop coverage stats
+    let playersWithProps = 0;
+    let totalPlayers = 0;
+    for (const proj of projections) {
+      for (const player of proj.players) {
+        totalPlayers++;
+        if (player.propCount && player.propCount > 0) {
+          playersWithProps++;
+        }
+      }
+    }
+
     return NextResponse.json({
       projections,
       completedWeeks,
@@ -276,6 +409,17 @@ export async function GET(request: Request) {
       byeTeams: Array.from(byeTeams),
       oddsCount: allOdds.length,
       lastUpdated: new Date().toISOString(),
+      // Enhanced projection metadata
+      enhanced: {
+        enabled: useEnhanced,
+        includeBreakdown,
+        propCoverage: {
+          playersWithProps,
+          totalPlayers,
+          percentage: totalPlayers > 0 ? Math.round((playersWithProps / totalPlayers) * 100) : 0,
+        },
+        weatherDataAvailable: weatherCache.size > 0,
+      },
     });
   } catch (error) {
     console.error("Error fetching playoff projections:", error);

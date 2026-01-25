@@ -5,6 +5,20 @@ import Link from "next/link";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 import { GamesToday } from "./games-today";
 
+// Determine current playoff week based on date
+function getCurrentPlayoffWeek(): number {
+  const now = new Date();
+  // 2025-26 NFL Playoff dates (approximate)
+  const wildCardEnd = new Date("2026-01-14");
+  const divisionalEnd = new Date("2026-01-20");
+  const conferenceEnd = new Date("2026-01-27");
+
+  if (now < wildCardEnd) return 1;
+  if (now < divisionalEnd) return 2;
+  if (now < conferenceEnd) return 3;
+  return 5; // Super Bowl
+}
+
 interface SubstitutionData {
   effectiveWeek: number;
   reason?: string | null;
@@ -61,6 +75,13 @@ interface ProjectionData {
   }[];
 }
 
+interface WeatherAlert {
+  gameId: string;
+  teams: string;
+  impact: string;
+  description: string;
+}
+
 const POSITION_COLORS: Record<string, string> = {
   QB: "text-red-400",
   RB: "text-green-400",
@@ -79,8 +100,9 @@ export function LiveScoreboard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [countdown, setCountdown] = useState(60);
-  const [showProjections, setShowProjections] = useState(false);
+  const [showProjections, setShowProjections] = useState(true);
   const [hasLiveGames, setHasLiveGames] = useState(false);
+  const [weatherAlerts, setWeatherAlerts] = useState<WeatherAlert[]>([]);
   const isInitialMount = useRef(true);
 
   const fetchScores = useCallback(async () => {
@@ -88,11 +110,32 @@ export function LiveScoreboard() {
       setLoading(true);
       setError(null);
 
-      // Fetch both live scores and projections
-      const [liveResponse, projectionsResponse] = await Promise.all([
+      // Fetch live scores, projections, and current week games for weather
+      const currentWeek = getCurrentPlayoffWeek();
+      const [liveResponse, projectionsResponse, gamesResponse] = await Promise.all([
         fetch(`/api/live?year=${CURRENT_SEASON_YEAR}`),
         fetch(`/api/projections?year=${CURRENT_SEASON_YEAR}`),
+        fetch(`/api/games?year=${CURRENT_SEASON_YEAR}&week=${currentWeek}`),
       ]);
+
+      // Process weather alerts from games
+      if (gamesResponse.ok) {
+        const gamesData = await gamesResponse.json();
+        const alerts: WeatherAlert[] = [];
+        for (const game of gamesData.games || []) {
+          if (game.weather && game.weather.impact?.level && game.weather.impact.level !== "none") {
+            if (game.weather.impact.level === "high" || game.weather.impact.level === "medium") {
+              alerts.push({
+                gameId: game.eventId,
+                teams: `${game.awayTeam.abbreviation} @ ${game.homeTeam.abbreviation}`,
+                impact: game.weather.impact.level,
+                description: game.weather.impact.description,
+              });
+            }
+          }
+        }
+        setWeatherAlerts(alerts);
+      }
 
       if (!liveResponse.ok) {
         throw new Error(`Failed to fetch: ${liveResponse.status}`);
@@ -348,6 +391,26 @@ export function LiveScoreboard() {
         </div>
       )}
 
+      {/* Weather alerts banner */}
+      {weatherAlerts.length > 0 && (
+        <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg px-4 py-2 text-xs">
+          <div className="flex items-center gap-2 text-yellow-300 mb-1">
+            <span>*</span>
+            <span className="font-medium">Weather Alert</span>
+          </div>
+          <div className="space-y-1">
+            {weatherAlerts.map((alert) => (
+              <div key={alert.gameId} className="text-yellow-200/80 flex items-center gap-2">
+                <span className="font-medium">{alert.teams}:</span>
+                <span className={alert.impact === "high" ? "text-red-400" : "text-yellow-400"}>
+                  {alert.description}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Error */}
       {error && (
         <div className="bg-red-900/30 border border-red-500/30 p-3 rounded-lg text-red-400 text-sm">
@@ -369,7 +432,7 @@ export function LiveScoreboard() {
             const pointChange =
               roster.previousTotal !== undefined ? roster.totalPoints - roster.previousTotal : null;
             const isUp = pointChange !== null && pointChange > 0;
-            const totalEV = roster.totalPoints + (roster.expectedValue || 0);
+            const totalProjected = roster.totalPoints + (roster.projectedPoints || 0);
 
             return (
               <div
@@ -388,9 +451,11 @@ export function LiveScoreboard() {
                   {roster.totalPoints.toFixed(1)}
                 </div>
                 {showProjections &&
-                  roster.expectedValue !== undefined &&
-                  roster.expectedValue > 0 && (
-                    <div className="text-xs text-[var(--chalk-blue)]">EV: {totalEV.toFixed(1)}</div>
+                  roster.projectedPoints !== undefined &&
+                  roster.projectedPoints > 0 && (
+                    <div className="text-xs text-[var(--chalk-blue)]">
+                      Proj: {totalProjected.toFixed(1)}
+                    </div>
                   )}
                 <div className="text-xs text-[var(--chalk-muted)]">
                   {roster.activePlayers}/9 active
@@ -415,7 +480,7 @@ export function LiveScoreboard() {
                 onChange={(e) => setShowProjections(e.target.checked)}
                 className="w-4 h-4 rounded"
               />
-              <span className="text-[var(--chalk-blue)]">EV</span>
+              <span className="text-[var(--chalk-blue)]">Proj</span>
             </label>
             <label className="flex items-center gap-1.5 cursor-pointer">
               <input
@@ -486,10 +551,10 @@ export function LiveScoreboard() {
                     : null;
                 const isUp = pointChange !== null && pointChange > 0.01;
                 const posColor = POSITION_COLORS[player.position] || "text-[var(--chalk-white)]";
-                const hasEV =
-                  player.expectedValue !== undefined &&
-                  player.expectedValue !== null &&
-                  player.expectedValue > 0;
+                const hasProjection =
+                  player.projectedPoints !== undefined &&
+                  player.projectedPoints !== null &&
+                  player.projectedPoints > 0;
                 const isInjured = player.hasSubstitution;
 
                 return (
@@ -550,9 +615,9 @@ export function LiveScoreboard() {
                           +{pointChange.toFixed(1)}
                         </span>
                       )}
-                      {showProjections && hasEV && (
+                      {showProjections && hasProjection && (
                         <span className="text-xs text-[var(--chalk-blue)] mr-1">
-                          +{player.expectedValue!.toFixed(1)}
+                          +{player.projectedPoints!.toFixed(1)}
                         </span>
                       )}
                       <span

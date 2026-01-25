@@ -29,6 +29,18 @@ interface BracketGame {
     score: number;
   };
   conference?: "AFC" | "NFC";
+  // Enhanced data from odds and weather APIs
+  weather?: {
+    temperature: number;
+    windSpeed: number;
+    windDirection: string;
+    condition: string;
+    isDome: boolean;
+    icon: string;
+    impact: { level: string; description: string };
+  };
+  homeWinProb?: number;
+  awayWinProb?: number;
 }
 
 interface BracketData {
@@ -114,6 +126,20 @@ function formatQuarter(period?: number): string {
   return `OT${period - 4 > 1 ? period - 4 : ""}`;
 }
 
+// Get weather impact color
+function getWeatherImpactColor(level: string): string {
+  switch (level) {
+    case "high":
+      return "text-red-400";
+    case "medium":
+      return "text-yellow-400";
+    case "low":
+      return "text-blue-300";
+    default:
+      return "text-[var(--chalk-muted)]";
+  }
+}
+
 function BracketGameCard({
   game,
   eliminatedTeams,
@@ -126,6 +152,7 @@ function BracketGameCard({
   const awayWinning = game.awayTeam.score > game.homeTeam.score;
   const homeWinning = game.homeTeam.score > game.awayTeam.score;
   const isLive = game.status.state === "in";
+  const isScheduled = game.status.state === "pre";
   const awayEliminated = eliminatedTeams.includes(game.awayTeam.abbreviation.toUpperCase());
   const homeEliminated = eliminatedTeams.includes(game.homeTeam.abbreviation.toUpperCase());
 
@@ -134,14 +161,29 @@ function BracketGameCard({
   const teamTextSize = size === "large" ? "text-sm" : "text-xs";
   const scoreTextSize = size === "large" ? "text-lg" : "text-sm";
 
+  // Win probabilities (convert from 0-1 range to 0-100 percentage)
+  const awayProb = (game.awayWinProb ?? 0.5) * 100;
+  const homeProb = (game.homeWinProb ?? 0.5) * 100;
+
   return (
     <Link
       href={`/game/${game.eventId}`}
       className={`block ${sizeClasses} rounded-lg bg-[rgba(0,0,0,0.3)] border border-[rgba(255,255,255,0.1)] hover:border-[var(--chalk-blue)] hover:bg-[rgba(0,0,0,0.4)] transition-all cursor-pointer`}
     >
-      {/* Status */}
+      {/* Status + Weather */}
       <div className="flex items-center justify-between mb-1.5">
-        <GameStatusBadge status={game.status} />
+        <div className="flex items-center gap-1">
+          <GameStatusBadge status={game.status} />
+          {/* Weather indicator */}
+          {game.weather && (
+            <span
+              className={`text-[10px] ${getWeatherImpactColor(game.weather.impact.level)}`}
+              title={`${game.weather.temperature}°F, ${game.weather.windSpeed}mph - ${game.weather.impact.description}`}
+            >
+              {game.weather.icon}
+            </span>
+          )}
+        </div>
         {isLive && game.status.displayClock && (
           <span className="text-[10px] text-green-400">
             {formatQuarter(game.status.period)} {game.status.displayClock}
@@ -222,6 +264,22 @@ function BracketGameCard({
           {game.status.state !== "pre" ? game.homeTeam.score : "-"}
         </span>
       </div>
+
+      {/* Win Probability Bar - Show for scheduled or live games */}
+      {(isScheduled || isLive) && (
+        <div className="mt-1.5 pt-1.5 border-t border-dashed border-[rgba(255,255,255,0.1)]">
+          <div className="flex items-center gap-1 text-[8px] text-[var(--chalk-muted)]">
+            <span className="w-6 text-right">{Math.round(awayProb)}%</span>
+            <div className="flex-1 h-1 bg-[rgba(255,255,255,0.1)] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[var(--chalk-blue)] to-[var(--chalk-green)]"
+                style={{ width: `${awayProb}%` }}
+              />
+            </div>
+            <span className="w-6">{Math.round(homeProb)}%</span>
+          </div>
+        </div>
+      )}
     </Link>
   );
 }

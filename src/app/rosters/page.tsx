@@ -243,6 +243,27 @@ export default async function RostersPage() {
   // Then get roster data with currentWeek context
   const rosters = await getRosterData(currentWeek);
 
+  // Get prop coverage statistics
+  const propCoverage = await prisma.playerProp.groupBy({
+    by: ["playerId"],
+    where: { year: CURRENT_SEASON_YEAR },
+  });
+  const playersWithProps = new Set(propCoverage.map((p) => p.playerId));
+
+  // Count rostered players with props
+  let totalRosteredPlayers = 0;
+  let playersWithPropData = 0;
+  for (const r of rosters) {
+    for (const p of r.roster) {
+      totalRosteredPlayers++;
+      if ("playerId" in p && playersWithProps.has(p.playerId as string)) {
+        playersWithPropData++;
+      }
+    }
+  }
+  const propCoveragePercent =
+    totalRosteredPlayers > 0 ? Math.round((playersWithPropData / totalRosteredPlayers) * 100) : 0;
+
   // Calculate totals and active players, sort by total points
   const rostersWithTotals = rosters
     .map((r) => {
@@ -294,6 +315,27 @@ export default async function RostersPage() {
         <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-3">
           <div className="text-xs text-red-400 font-medium mb-1">Eliminated Teams</div>
           <div className="text-sm text-[var(--chalk-muted)]">{eliminatedArray.join(", ")}</div>
+        </div>
+      )}
+
+      {/* Prop Coverage Banner */}
+      {propCoveragePercent > 0 && (
+        <div className="bg-[var(--chalk-blue)]/10 border border-[var(--chalk-blue)]/30 rounded-lg p-3 flex items-center justify-between">
+          <div>
+            <div className="text-xs text-[var(--chalk-blue)] font-medium mb-1">
+              Betting Prop Coverage
+            </div>
+            <div className="text-sm text-[var(--chalk-muted)]">
+              {playersWithPropData} of {totalRosteredPlayers} rostered players have betting props
+              available
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-bold text-[var(--chalk-blue)]">
+              {propCoveragePercent}%
+            </div>
+            <div className="text-[10px] text-[var(--chalk-muted)]">coverage</div>
+          </div>
         </div>
       )}
 

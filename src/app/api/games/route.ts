@@ -4,6 +4,27 @@ import { fetchScoreboard, fetchGameSummary, getEliminatedTeams } from "@/lib/esp
 import { parsePlayerStats, parseDefenseStats, calculateTotalPoints } from "@/lib/espn";
 import { CURRENT_SEASON_YEAR } from "@/lib/constants";
 import { GamePlayer, PlayoffGame } from "@/types";
+import { fetchStadiumWeather, getWeatherIcon, getWeatherImpact } from "@/lib/weather/client";
+
+// Extended game type with weather and odds
+interface EnhancedPlayoffGame extends PlayoffGame {
+  weather?: {
+    temperature: number;
+    windSpeed: number;
+    windDirection: string;
+    condition: string;
+    isDome: boolean;
+    icon: string;
+    impact: { level: string; description: string };
+  };
+  homeWinProb?: number;
+  awayWinProb?: number;
+}
+
+// Extended player type with props
+interface EnhancedGamePlayer extends GamePlayer {
+  props?: { propType: string; line: number }[];
+}
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +40,25 @@ export async function GET(request: Request) {
 
     // Get eliminated teams based on completed playoff games
     const eliminatedTeams = await getEliminatedTeams();
+
+    // Get team odds for this week
+    const teamOdds = await prisma.teamOdds.findMany({
+      where: { year, week },
+    });
+    const oddsMap = new Map(teamOdds.map((o) => [o.team, o]));
+
+    // Get player props for this week
+    const playerProps = await prisma.playerProp.findMany({
+      where: { year, week },
+      include: { player: true },
+    });
+    // Map props by player ID
+    const propsMap = new Map<string, { propType: string; line: number }[]>();
+    for (const prop of playerProps) {
+      const existing = propsMap.get(prop.playerId) || [];
+      existing.push({ propType: prop.propType, line: prop.line });
+      propsMap.set(prop.playerId, existing);
+    }
 
     // Get all rostered players with their owners and substitutions
     const rosters = await prisma.roster.findMany({
@@ -143,7 +183,7 @@ export async function GET(request: Request) {
 
     // Fetch games for the specified week
     const events = await fetchScoreboard(week);
-    const games: PlayoffGame[] = [];
+    const games: EnhancedPlayoffGame[] = [];
 
     for (const event of events) {
       // Skip Pro Bowl
@@ -157,7 +197,24 @@ export async function GET(request: Request) {
 
       if (!homeCompetitor || !awayCompetitor) continue;
 
-      const gameInfo: PlayoffGame = {
+      // Get team abbreviations
+      const homeAbbr = homeCompetitor.team.abbreviation.toUpperCase();
+      const awayAbbr = awayCompetitor.team.abbreviation.toUpperCase();
+
+      // Get odds for this game
+      const homeOdds = oddsMap.get(homeAbbr);
+      const awayOdds = oddsMap.get(awayAbbr);
+
+      // Fetch weather for this game (use home team's stadium)
+      let weatherData = null;
+      try {
+        const gameTime = new Date(event.date);
+        weatherData = await fetchStadiumWeather(homeAbbr, gameTime);
+      } catch (e) {
+        console.warn(`Could not fetch weather for ${homeAbbr}:`, e);
+      }
+
+      const gameInfo: EnhancedPlayoffGame = {
         eventId: event.id,
         week,
         name: event.name,
@@ -184,6 +241,21 @@ export async function GET(request: Request) {
           score: parseInt(awayCompetitor.score) || 0,
         },
         players: [],
+        // Add weather data
+        weather: weatherData
+          ? {
+              temperature: weatherData.temperature,
+              windSpeed: weatherData.windSpeed,
+              windDirection: weatherData.windDirection,
+              condition: weatherData.condition,
+              isDome: weatherData.isDome,
+              icon: getWeatherIcon(weatherData),
+              impact: getWeatherImpact(weatherData),
+            }
+          : undefined,
+        // Add win probabilities
+        homeWinProb: homeOdds?.winProb,
+        awayWinProb: awayOdds?.winProb,
       };
 
       // Only fetch detailed stats for games that have started
@@ -234,7 +306,9 @@ export async function GET(request: Request) {
                 hasSubstitution: rosterInfo.hasSubstitution,
                 isInjured,
                 substitution: rosterInfo.substitution,
-              });
+                // Player props
+                props: propsMap.get(rosterInfo.playerId),
+              } as EnhancedGamePlayer);
             } else if (subInfo && week >= subInfo.effectiveWeek) {
               // This is a substitute player and we're in an active week for them
               const playerTeam = (player.team || subInfo.team || "").toUpperCase();
@@ -262,7 +336,9 @@ export async function GET(request: Request) {
                 // Mark as substitute
                 isSubstitute: true,
                 originalPlayer: subInfo.originalPlayer,
-              });
+                // Player props
+                props: propsMap.get(subInfo.playerId),
+              } as EnhancedGamePlayer);
             }
           }
 
@@ -283,7 +359,8 @@ export async function GET(request: Request) {
                 isEliminated: eliminatedTeams.has(defense.abbreviation.toUpperCase()),
                 stats: {},
                 points: defense.totalPoints,
-              });
+                props: propsMap.get(rosterInfo.playerId),
+              } as EnhancedGamePlayer);
             }
           }
         }
