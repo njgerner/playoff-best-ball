@@ -100,7 +100,7 @@ export function LiveScoreboard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [countdown, setCountdown] = useState(60);
-  const [showProjections, setShowProjections] = useState(true);
+  const [showProjections, setShowProjections] = useState(false);
   const [hasLiveGames, setHasLiveGames] = useState(false);
   const [weatherAlerts, setWeatherAlerts] = useState<WeatherAlert[]>([]);
   const isInitialMount = useRef(true);
